@@ -132,6 +132,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `ntustStoredPasswordRefusedAt` | school | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `ntust` |
 | defaults | `outlineRequiredCourses` | device |  |
 | defaults | `pendingConflictCategories` | school | `swift/TigerDuck/Backend/Sync/SyncProgress.swift` `forget` |
+| defaults | `pinMyselfInCourseMembers` | device |  |
 | defaults | `pinTodayCoursesOnClassTable` | device |  |
 | defaults | `pushDeviceSecretRefused` | device |  |
 | defaults | `pushServerEnabled` | device |  |

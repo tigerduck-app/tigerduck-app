@@ -2,31 +2,38 @@ import SwiftUI
 import TigerDuckCore
 
 struct MonthCalendarView: View {
-    @Bindable var viewModel: CalendarViewModel
+    let viewModel: CalendarViewModel
 
-    private let weekdaySymbols = [
-        String(localized: "weekday_sun_short"),
-        String(localized: "weekday_mon_short"),
-        String(localized: "weekday_tue_short"),
-        String(localized: "weekday_wed_short"),
-        String(localized: "weekday_thu_short"),
-        String(localized: "weekday_fri_short"),
-        String(localized: "weekday_sat_short"),
-    ]
-    private let columns = Array(repeating: GridItem(.flexible()), count: 7)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var page: Int
+    @State private var position: PagerPosition
+    @State private var weeks: Int
+    @State private var announcement: Task<Void, Never>?
 
-    private var monthTitle: String {
-        var style = Date.FormatStyle.dateTime.year().month(.wide)
-        style.timeZone = TaipeiTime.timeZone
-        return viewModel.displayedMonth.formatted(style)
+    init(viewModel: CalendarViewModel) {
+        self.viewModel = viewModel
+        let page = CalendarViewModel.monthPage(of: viewModel.displayedMonth)
+        _page = State(initialValue: page)
+        _position = State(initialValue: PagerPosition(page: page))
+        _weeks = State(initialValue: Self.weeks(onPage: page))
     }
 
-    private var calendarDays: [Date?] { viewModel.calendarDays }
+    /// Tests swap it: a posted accessibility notification cannot be observed.
+    static var postPageScrolled: (String) -> Void = { AccessibilityNotification.PageScrolled($0).post() }
+    static var pageScrolledDelay = Duration.milliseconds(100)
+
+    static func title(of month: Date) -> String {
+        var style = Date.FormatStyle.dateTime.year().month(.wide)
+        style.timeZone = TaipeiTime.timeZone
+        return month.formatted(style)
+    }
+
+    private var monthTitle: String { Self.title(of: viewModel.displayedMonth) }
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.md) {
             HStack {
-                Button(action: viewModel.previousMonth) {
+                Button { turn(to: position.settledPage - 1) } label: {
                     Image(systemName: "chevron.left")
                         .foregroundStyle(.tint)
                 }
@@ -38,7 +45,7 @@ struct MonthCalendarView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.4)
                 Spacer()
-                Button(action: viewModel.nextMonth) {
+                Button { turn(to: position.settledPage + 1) } label: {
                     Image(systemName: "chevron.right")
                         .foregroundStyle(.tint)
                 }
@@ -46,36 +53,125 @@ struct MonthCalendarView: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
-            LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.3)
-                }
-            }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+            WeekdayRow()
 
-            LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
-                ForEach(Array(calendarDays.enumerated()), id: \.offset) { _, date in
-                    if let date {
-                        DayCellView(
-                            date: date,
-                            isSelected: date.isSameDay(as: viewModel.selectedDate),
-                            isToday: date.isToday,
-                            events: viewModel.eventsOnDate(date)
-                        ) {
-                            viewModel.selectedDate = date
-                        }
-                    } else {
-                        Color.clear
-                            .frame(height: 40)
+            MonthGrid(days: Array(repeating: nil, count: 7 * weeks), viewModel: viewModel)
+                .hidden()
+                .overlay(alignment: .top) {
+                    Pager(count: CalendarViewModel.monthPageCount, index: $page, position: $position, onScrollSettle: announce(page:)) { page in
+                        MonthGrid(days: CalendarViewModel.buildCalendarDays(for: CalendarViewModel.month(atPage: page)), viewModel: viewModel)
+                            .frame(maxHeight: .infinity, alignment: .top)
                     }
+                    .modifier(ScrollStatus(text: monthTitle))
+                    // An animated height stops VoiceOver's page scroll partway, so the pager takes its
+                    // new height at once and only the views around it animate.
+                    .transaction(value: weeks) { $0.animation = nil }
+                }
+        }
+        .onChange(of: page) { _, page in
+            viewModel.displayedMonth = CalendarViewModel.month(atPage: page)
+        }
+        .onChange(of: viewModel.displayedMonth) { _, month in
+            let target = CalendarViewModel.monthPage(of: month)
+            if target != page { turn(to: target) }
+        }
+        .onDisappear { announcement?.cancel() }
+        .onChange(of: position.visiblePages) { _, pages in
+            let tallest = pages.map(Self.weeks(onPage:)).max() ?? weeks
+            withAnimation(reduceMotion ? nil : .smoothSpring) { weeks = tallest }
+        }
+    }
+
+    private func turn(to target: Int) {
+        guard (0..<CalendarViewModel.monthPageCount).contains(target) else { return }
+        announcement?.cancel()
+        let isNextDoor = abs(target - position.settledPage) == 1
+        withAnimation(isNextDoor && !reduceMotion ? .pageTurn : nil) {
+            position.go(to: target)
+        }
+    }
+
+    /// Before iOS 26 a page scroll's status cannot be set, and VoiceOver would say "page N of 2400".
+    /// UIKit posts that status about 10 ms after the grid rests, so the month follows it.
+    private func announce(page: Int) {
+        if #unavailable(iOS 26) {
+            let title = Self.title(of: CalendarViewModel.month(atPage: page))
+            announcement?.cancel()
+            announcement = Task {
+                try? await AppClock.sleep(until: ContinuousClock.now + Self.pageScrolledDelay)
+                guard !Task.isCancelled else { return }
+                Self.postPageScrolled(title)
+            }
+        }
+    }
+
+    private static func weeks(onPage page: Int) -> Int {
+        CalendarViewModel.buildCalendarDays(for: CalendarViewModel.month(atPage: page)).count / 7
+    }
+}
+
+private struct MonthGrid: View {
+    let days: [Date?]
+    let viewModel: CalendarViewModel
+
+    static let columns = Array(repeating: GridItem(.flexible()), count: 7)
+
+    var body: some View {
+        LazyVGrid(columns: Self.columns, spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(Array(days.enumerated()), id: \.offset) { _, date in
+                if let date {
+                    DayCellView(
+                        date: date,
+                        isSelected: date.isSameDay(as: viewModel.selectedDate),
+                        isToday: date.isToday,
+                        events: viewModel.eventsOnDate(date)
+                    ) {
+                        viewModel.selectedDate = date
+                    }
+                } else {
+                    Color.clear
+                        .frame(height: 40)
                 }
             }
-            .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
+private struct ScrollStatus: ViewModifier {
+    let text: String
+
+    func body(content: Content) -> some View {
+        if #available(iOS 26, *) {
+            content.accessibilityScrollStatus(text)
+        } else {
+            content
+        }
+    }
+}
+
+private struct WeekdayRow: View {
+    private let symbols = [
+        String(localized: "weekday_sun_short"),
+        String(localized: "weekday_mon_short"),
+        String(localized: "weekday_tue_short"),
+        String(localized: "weekday_wed_short"),
+        String(localized: "weekday_thu_short"),
+        String(localized: "weekday_fri_short"),
+        String(localized: "weekday_sat_short"),
+    ]
+
+    var body: some View {
+        LazyVGrid(columns: MonthGrid.columns, spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(symbols, id: \.self) { symbol in
+                Text(symbol)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.3)
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 }
 

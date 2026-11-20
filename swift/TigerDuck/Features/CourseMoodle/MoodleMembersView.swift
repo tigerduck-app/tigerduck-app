@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 
 nonisolated extension MoodleMember {
@@ -6,54 +7,6 @@ nonisolated extension MoodleMember {
     /// Never Moodle's own field, which NTUST's Moodle fills with the degree level, and only for the
     /// signed-in student.
     var department: NTUSTDepartment? { NTUSTDepartment(studentId: studentId) }
-}
-
-/// The department a bachelor's student ID names, the one the student was admitted to. The ID is a
-/// letter, the entry year in three digits, the department's code in two and a serial in three.
-/// Each case is the department's course code, which names its strings, and only the codes the
-/// school's course rosters confirm are here (`app-translation/CONVENTIONS.md`).
-nonisolated enum NTUSTDepartment: String {
-    case im = "01", et = "02", me = "03", tx = "04", ct = "05", ch = "06"
-    case ee = "07", ba = "08", dt = "10", ad = "13", cs = "15", hc = "30"
-
-    init?(studentId: String?) {
-        guard let match = studentId?.wholeMatch(of: /[Bb][0-9]{3}([0-9]{2})[0-9]{3}/) else { return nil }
-        self.init(rawValue: String(match.1))
-    }
-
-    var name: String {
-        switch self {
-        case .im: String(localized: "course_member_department_im")
-        case .et: String(localized: "course_member_department_et")
-        case .me: String(localized: "course_member_department_me")
-        case .tx: String(localized: "course_member_department_tx")
-        case .ct: String(localized: "course_member_department_ct")
-        case .ch: String(localized: "course_member_department_ch")
-        case .ee: String(localized: "course_member_department_ee")
-        case .ba: String(localized: "course_member_department_ba")
-        case .dt: String(localized: "course_member_department_dt")
-        case .ad: String(localized: "course_member_department_ad")
-        case .cs: String(localized: "course_member_department_cs")
-        case .hc: String(localized: "course_member_department_hc")
-        }
-    }
-
-    var shortName: String {
-        switch self {
-        case .im: String(localized: "course_member_department_im_short")
-        case .et: String(localized: "course_member_department_et_short")
-        case .me: String(localized: "course_member_department_me_short")
-        case .tx: String(localized: "course_member_department_tx_short")
-        case .ct: String(localized: "course_member_department_ct_short")
-        case .ch: String(localized: "course_member_department_ch_short")
-        case .ee: String(localized: "course_member_department_ee_short")
-        case .ba: String(localized: "course_member_department_ba_short")
-        case .dt: String(localized: "course_member_department_dt_short")
-        case .ad: String(localized: "course_member_department_ad_short")
-        case .cs: String(localized: "course_member_department_cs_short")
-        case .hc: String(localized: "course_member_department_hc_short")
-        }
-    }
 }
 
 extension MoodlePage {
@@ -108,13 +61,18 @@ nonisolated struct MoodleMemberSection: Identifiable, Equatable {
 
     var id: Placement { placement }
 
-    static func sections(of members: [MoodleMember], matching query: String = "") -> [MoodleMemberSection] {
+    static func sections(
+        of members: [MoodleMember], matching query: String = "", pinning pinned: Int? = nil
+    ) -> [MoodleMemberSection] {
         let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
         let shown = needle.isEmpty ? members : members.filter { $0.matches(needle) }
         return Dictionary(grouping: shown, by: Placement.init)
             .sorted { $0.key < $1.key }
             .map { placement, people in
-                MoodleMemberSection(placement: placement, members: people.sorted(by: placement.listsByStudentId ? byStudentId : byName))
+                let sorted = people.sorted(by: placement.listsByStudentId ? byStudentId : byName)
+                return MoodleMemberSection(
+                    placement: placement, members: sorted.filter { $0.id == pinned } + sorted.filter { $0.id != pinned }
+                )
             }
     }
 
@@ -145,6 +103,7 @@ struct MoodleMembersView: View {
     let open: (MoodleCourseRoute) -> Void
 
     @State private var query = ""
+    @Default(.pinMyselfInCourseMembers) private var pinsMyself
     @FocusState private var isSearchFocused: Bool
     #if os(iOS)
     @State private var isSearchRevealed = false
@@ -155,12 +114,14 @@ struct MoodleMembersView: View {
         case sections([MoodleMemberSection])
         case noMatches(query: String)
 
-        init(list: MoodleMemberList?, isRefreshing: Bool, failure: (any Error)?, query: String) {
+        init(list: MoodleMemberList?, isRefreshing: Bool, failure: (any Error)?, query: String, pinsMyself: Bool = false) {
             guard let list else {
                 self = .firstLoad(failure: isRefreshing ? nil : failure)
                 return
             }
-            let sections = MoodleMemberSection.sections(of: list.members, matching: query)
+            let sections = MoodleMemberSection.sections(
+                of: list.members, matching: query, pinning: pinsMyself ? list.ownId : nil
+            )
             let needle = query.trimmingCharacters(in: .whitespacesAndNewlines)
             self = sections.isEmpty && !needle.isEmpty ? .noMatches(query: needle) : .sections(sections)
         }
@@ -173,7 +134,7 @@ struct MoodleMembersView: View {
     var body: some View {
         let content = Content(
             list: store.members.value, isRefreshing: store.members.isRefreshing,
-            failure: store.members.failure, query: query
+            failure: store.members.failure, query: query, pinsMyself: pinsMyself
         )
         List {
             if content.hasList { searchRow }
@@ -199,8 +160,16 @@ struct MoodleMembersView: View {
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
-                        .listRowInsets(rowInsets(top: 0, bottom: isLast ? TigerDuckTheme.Spacing.xs : 0))
+                        .listRowInsets(rowInsets(top: 0, bottom: 0))
                     }
+                    // After rows move, a List sizes a row that stayed only a frame later, so space that
+                    // depends on a member's place goes in a row of its own, which stays last.
+                    Color.clear
+                        .frame(height: TigerDuckTheme.Spacing.xs)
+                        .accessibilityHidden(true)
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets())
                 }
             case .noMatches(let needle):
                 ContentUnavailableView.search(text: needle)
@@ -221,7 +190,11 @@ struct MoodleMembersView: View {
             title: String(localized: "course_detail_members_label"),
             page: .participants(courseId: store.courseId),
             refresh: { await store.refreshMembers() }
-        )
+        ) {
+            #if os(iOS)
+            Section { PageMenuToggle(row: .pinMyself, isOn: $pinsMyself) }
+            #endif
+        }
         .moodleAutoRefresh(every: store.members.ttl, fetchedAt: { store.membersFetchedAt }) {
             await store.refreshMembers()
         }

@@ -26,9 +26,10 @@ struct CourseDetailAssignments: View {
                             Text(assignment.displayTitle)
                                 .font(TigerDuckTheme.Typography.body)
                                 .foregroundStyle(Color.textPrimary)
-                            Text(String(format: String(localized: "course_detail_due_prefix"), assignment.dueDate.shortDateString))
+                            Text(String(format: String(localized: "course_detail_due_prefix"), assignment.dueDate?.shortDateString ?? "—"))
                                 .font(TigerDuckTheme.Typography.caption)
                                 .foregroundStyle(assignment.isOverdue ? Color.badgeRed : Color.textSecondary)
+                                .accessibilityHidden(assignment.dueDate == nil)
                         }
                         Spacer()
                         Image(systemName: Self.assignmentAccessory)

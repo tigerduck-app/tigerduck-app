@@ -4,6 +4,7 @@ import SwiftUI
 struct MoodlePageSettingsView: View {
     @Environment(\.settingsState) private var state
     @Default(.moodleOpenTarget) private var openTarget
+    @Default(.pinMyselfInCourseMembers) private var pinsMyself
 
     var body: some View {
         List {
@@ -27,6 +28,9 @@ struct MoodlePageSettingsView: View {
                     .pickerStyle(.menu)
                     .settingsRow(.moodleOpenIn)
                 }
+            }
+            Section {
+                Toggle(SettingsRow.pinMyself.label, isOn: $pinsMyself)
             }
             StorageKindSection(kinds: [.moodleFiles, .moodleData])
         }

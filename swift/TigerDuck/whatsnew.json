@@ -894,5 +894,23 @@
         { "symbol": "doc.on.doc", "title": "Course details", "body": "Tap common details to copy them, and dragging works better." }
       ]
     }
+  },
+  "4.0.2": {
+    "zh-TW": {
+      "title": "4.0.2 更新內容",
+      "items": [
+        { "symbol": "calendar", "title": "行事曆", "body": "可以左右滑動切換月份。" },
+        { "symbol": "person.2", "title": "課程成員", "body": "允許固定自己在列表最上面，並顯示更完整的系所。" },
+        { "symbol": "checklist", "title": "作業", "body": "修正無期限作業未顯示的問題。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 4.0.2",
+      "items": [
+        { "symbol": "calendar", "title": "Calendar", "body": "Swipe left or right to change months." },
+        { "symbol": "person.2", "title": "Course members", "body": "Pin yourself to the top of the list, with more complete departments." },
+        { "symbol": "checklist", "title": "Assignments", "body": "Fixed assignments without a due date not showing up." }
+      ]
+    }
   }
 }

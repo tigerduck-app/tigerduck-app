@@ -21,7 +21,7 @@ struct MoodleCourseAssignmentsTests {
         )
     }
 
-    private static func assignment(_ id: Int) -> SDAssignment {
+    private static func assignment(_ id: Int, due: Date? = MoodleCourseAssignmentsTests.due) -> SDAssignment {
         SDAssignment(
             assignmentId: String(id), courseNo: "CS3105301", courseName: "Data Structures", title: "HW \(id)",
             dueDate: due, moodleUrl: "https://moodle2.ntust.edu.tw/mod/assign/view.php?id=\(id + 9000)"
@@ -47,7 +47,7 @@ struct MoodleCourseAssignmentsTests {
     private static func round(_ records: [MoodleAssignmentRecord], in folder: Folder, account: String = account) {
         folder.cache.moodle.saveMoodleData(records, fetchedAt: Date(), name: MoodleAssignmentRecord.cacheName, account: account,
                                        for: testSignIn)
-        folder.cache.assignments.saveAssignments(records.filter { $0.dueDate != nil && !$0.noSubmissions }.map { assignment($0.assignId) }, for: testSignIn)
+        folder.cache.assignments.saveAssignments(records.filter { !$0.noSubmissions }.map { assignment($0.assignId, due: $0.dueDate) }, for: testSignIn)
     }
 
     private final class Site: @unchecked Sendable {
@@ -171,7 +171,7 @@ struct MoodleCourseAssignmentsTests {
         #expect(store.sectionRows.map(\.kind) == [.materials, .assignments, .grades])
         #expect(store.sectionRows.first { $0.kind == .assignments }?.count == 4)
         #expect(store.assignments.list.map(\.id) == [701, 702, 703, 704])
-        #expect(store.assignments.list.map { $0.listed?.assignmentId } == ["701", "702", nil, nil])
+        #expect(store.assignments.list.map { $0.listed?.assignmentId } == ["701", "702", "703", nil])
         #expect(MoodleCourseSection.route(for: .assignments, in: store) == .assignments)
     }
 
@@ -222,25 +222,25 @@ struct MoodleCourseAssignmentsTests {
         ))
     }
 
-    @Test("the list shows what is to come by due time, then the undated in Moodle's order, then the past, latest first")
+    @Test("the list shows what is to come by due time, then the past, latest first, then the undated by title")
     func listOrderAndStatuses() {
         let day: TimeInterval = 86_400
         let rows = MoodleAssignmentsView.rows(of: [
             Self.entry(1, due: -10 * day, submitted: -11 * day),
-            Self.entry(8, due: nil),
+            Self.entry(10, due: nil),
             Self.entry(2, due: 7 * day),
             Self.entry(3, due: -2 * day, submitted: -1 * day),
             Self.entry(4, due: 2 * day),
             Self.entry(9, due: -3 * day, listed: false),
             Self.entry(5, due: -5 * day, cutoff: -1 * day),
             Self.entry(6, due: -1 * day, ignored: true),
-            Self.entry(10, due: nil),
+            Self.entry(8, due: nil),
             Self.entry(7, due: 3 * day, markedDone: true),
         ], now: Self.due)
 
-        #expect(rows.map(\.id) == [4, 7, 2, 8, 10, 6, 3, 9, 5, 1])
+        #expect(rows.map(\.id) == [4, 7, 2, 6, 3, 9, 5, 1, 8, 10])
         #expect(rows.map(\.status) == [
-            nil, nil, nil, nil, nil, .overdueAcceptable, .submittedLate, nil, .overdueAcceptable, .submitted,
+            nil, nil, nil, .overdueAcceptable, .submittedLate, nil, .overdueAcceptable, .submitted, nil, nil,
         ])
         #expect(rows.compactMap { $0.status?.badgeLabel } == [
             String(localized: "assignment_status_overdue"), String(localized: "assignment_status_submitted_late"),

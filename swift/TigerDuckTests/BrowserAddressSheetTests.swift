@@ -123,6 +123,23 @@ struct BrowserAddressSheetTests {
         }
     }
 
+    @Test("a zoom change fades the whole More sheet out, then back")
+    func zoomFadesTheMoreSheet() async throws {
+        let page = BrowserPage()
+        let window = try Self.window(page, sheet: .more)
+        defer { window.isHidden = true }
+        let root = try #require(window.rootViewController)
+        try await waitUntil {
+            root.presentedViewController.map { !$0.isBeingPresented && $0.transitionCoordinator == nil } == true
+        }
+        let container = try #require(root.presentedViewController?.presentationController?.containerView)
+
+        page.zoomPeek.zoom {}
+
+        try await waitUntil { container.alpha == 0 }
+        try await waitUntil(timeout: .seconds(5)) { container.alpha == 1 }
+    }
+
     @Test("with no leaf known from the refusal, the sheet says it was refused and offers nothing")
     func nothingToAcceptWithoutASeenCertificate() async throws {
         try await withAccessibilityAutomation {

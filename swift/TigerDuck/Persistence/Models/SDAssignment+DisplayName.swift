@@ -16,6 +16,11 @@ extension SDAssignment {
 
     var displayTitle: String { title.decodingHTMLEntities() }
 
+    func dueLabel(now: Date, absolute: Bool) -> String {
+        guard let dueDate else { return "—" }
+        return absolute || dueDate < now ? dueDate.absoluteTimeString : dueDate.relativeTimeString(from: now)
+    }
+
     func courseLineLabel(matching course: SDCourse?) -> String {
         let name = displayCourseName(matching: course)
         let code = course?.courseNo ?? courseNo

@@ -71,15 +71,17 @@ private struct MoodleLinkOpening: ViewModifier {
 }
 
 extension View {
-    func moodleListChrome(
+    func moodleListChrome<MenuItems: View>(
         title: String,
         page: MoodlePage?,
         showsSettings: Bool = true,
         willOpenPage: @escaping () -> Void = {},
-        refresh: @escaping () async -> Void
+        refresh: @escaping () async -> Void,
+        @ViewBuilder menuItems: () -> MenuItems = { EmptyView() }
     ) -> some View {
         modifier(MoodleListChrome(
-            title: title, page: page, showsSettings: showsSettings, willOpenPage: willOpenPage, refresh: refresh
+            title: title, page: page, showsSettings: showsSettings, willOpenPage: willOpenPage, refresh: refresh,
+            menuItems: menuItems()
         ))
     }
 
@@ -101,12 +103,13 @@ extension View {
     }
 }
 
-private struct MoodleListChrome: ViewModifier {
+private struct MoodleListChrome<MenuItems: View>: ViewModifier {
     let title: String
     let page: MoodlePage?
     let showsSettings: Bool
     let willOpenPage: () -> Void
     let refresh: () async -> Void
+    let menuItems: MenuItems
 
     func body(content: Content) -> some View {
         #if os(iOS)
@@ -120,7 +123,10 @@ private struct MoodleListChrome: ViewModifier {
                 }
                 if showsSettings {
                     ToolbarItem(placement: .topBarTrailing) {
-                        PageMenuButton(page: .moodle, placement: .toolbar) { PageSettingsButton() }
+                        PageMenuButton(page: .moodle, placement: .toolbar) {
+                            menuItems
+                            Section { PageSettingsButton() }
+                        }
                     }
                 }
             }

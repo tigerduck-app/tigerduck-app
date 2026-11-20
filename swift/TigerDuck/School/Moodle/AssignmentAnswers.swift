@@ -7,7 +7,7 @@ enum AssignmentAnswers {
     static func saveMoodleCalendarEvents(of assignments: [SDAssignment], in cache: AssignmentStore, for signIn: SignIn) {
         var calendarEvents = cache.loadCalendarEvents()
         calendarEvents.removeAll { $0.source == .moodle }
-        calendarEvents.append(contentsOf: assignments.map(AssignmentRecords.moodleCalendarEvent))
+        calendarEvents.append(contentsOf: assignments.compactMap(AssignmentRecords.moodleCalendarEvent))
         cache.saveCalendarEvents(calendarEvents, for: signIn)
     }
 
@@ -40,7 +40,7 @@ enum AssignmentAnswers {
                 courseNo: a.courseNo,
                 courseName: a.courseName,
                 title: a.title,
-                dueAt: iso.string(from: a.dueDate),
+                dueAt: a.dueDate.map(iso.string(from:)),
                 moodleUrl: a.moodleUrl,
                 isSubmitted: a.isCompleted,
                 grade: nil

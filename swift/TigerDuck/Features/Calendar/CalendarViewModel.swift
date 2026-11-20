@@ -51,6 +51,19 @@ final class CalendarViewModel {
         displayedMonth = .now
     }
 
+    static let pagedYears = 1900..<2100
+    static let monthPageCount = pagedYears.count * 12
+
+    static func monthPage(of date: Date) -> Int {
+        let parts = TaipeiTime.calendar.dateComponents([.year, .month], from: date)
+        let page = (parts.year! - pagedYears.lowerBound) * 12 + parts.month! - 1
+        return min(max(page, 0), monthPageCount - 1)
+    }
+
+    static func month(atPage page: Int) -> Date {
+        TaipeiTime.calendar.date(from: DateComponents(year: pagedYears.lowerBound + page / 12, month: page % 12 + 1))!
+    }
+
     func load(moodle: @escaping () -> MoodleCacheContext?) {
         guard storeObservation == nil else { return }
 

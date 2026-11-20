@@ -204,7 +204,10 @@ private struct BrowserPresentationFade: UIViewRepresentable {
 
     func updateUIView(_ view: UIView, context: Context) {
         let controller = sequence(first: view as UIResponder, next: \.next).lazy.compactMap { $0 as? UIViewController }.first
-        let levels = controller.map(Self.levels) ?? []
+        let presented = controller.flatMap { child in
+            sequence(first: child, next: \UIViewController.parent).first { (ancestor: UIViewController) in ancestor.parent == nil }
+        }
+        let levels = presented.map(Self.levels) ?? []
         guard let container = levels.last, (container.alpha == 0) != hidden else { return }
         UIView.animate(withDuration: 0.25, delay: 0, options: .beginFromCurrentState) {
             for level in levels { level.alpha = hidden ? 0 : 1 }

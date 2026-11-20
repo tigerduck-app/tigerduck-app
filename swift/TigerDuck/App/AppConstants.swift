@@ -83,6 +83,7 @@ nonisolated enum AppConstants {
         static let showClassroomInClassTable = "showClassroomInClassTable"
         static let pinTodayCoursesOnClassTable = "pinTodayCoursesOnClassTable"
         static let outlineRequiredCourses = "outlineRequiredCourses"
+        static let pinMyselfInCourseMembers = "pinMyselfInCourseMembers"
         static let configuredTabs = "configuredTabs"
         static let macConfiguredTabs = "macConfiguredTabs"
         static let invertSliderDirection = "invertSliderDirection"

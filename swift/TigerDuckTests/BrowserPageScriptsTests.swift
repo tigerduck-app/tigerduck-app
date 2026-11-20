@@ -178,15 +178,7 @@ struct BrowserPageScriptsTests {
     private func brightnessBelowTheText(of webView: WKWebView) async throws -> CGFloat {
         _ = await evaluate(webView, "await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)))")
         let image = try await webView.takeSnapshot(configuration: nil)
-        return try #require(Self.brightness(of: image, at: CGPoint(x: 200, y: 700)))
-    }
-
-    /// The mean of a snapshot pixel's color channels, from 0 for black to 1 for white.
-    private static func brightness(of image: UIImage, at point: CGPoint) -> CGFloat? {
-        guard let cgImage = image.cgImage, let data = cgImage.dataProvider?.data, let bytes = CFDataGetBytePtr(data) else { return nil }
-        let scale = CGFloat(cgImage.width) / image.size.width
-        let pixel = bytes + Int(point.y * scale) * cgImage.bytesPerRow + Int(point.x * scale) * cgImage.bitsPerPixel / 8
-        return (CGFloat(pixel[0]) + CGFloat(pixel[1]) + CGFloat(pixel[2])) / 765
+        return try #require(image.brightness(at: CGPoint(x: 200, y: 700)))
     }
 
     private static func brightness(of color: UIColor, in view: UIView) -> CGFloat {

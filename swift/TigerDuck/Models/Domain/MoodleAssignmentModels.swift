@@ -18,10 +18,14 @@ nonisolated struct MoodleAssignmentRecord: Codable, Sendable, Hashable {
     var introAttachments: [MoodleFile] = []
     var teamSubmission = false
 
-    /// Moodle keeps the assignment's own due date for everyone and gives a student an extension
-    /// apart, which counts only when it is later.
     func dueDate(extendedTo extensionDate: Date?) -> Date? {
-        dueDate.map { max($0, extensionDate ?? $0) }
+        Self.dueDate(dueDate, extendedTo: extensionDate)
+    }
+
+    /// Moodle keeps the assignment's own due date for everyone and gives a student an extension
+    /// apart, which counts only when it is later or the assignment has no due date.
+    static func dueDate(_ dueDate: Date?, extendedTo extensionDate: Date?) -> Date? {
+        [dueDate, extensionDate].compactMap { $0 }.max()
     }
 }
 

@@ -59,7 +59,8 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
 
 - Run the touched on-screen and UIKit-bridged suites on an iOS 26 simulator and an iOS 27 one
   before pushing. CI's phone job runs iOS 27.0 only, and its iOS 18 job runs only the search
-  suites; where iOS 26 or iOS 18 behavior is not run, say why in the pull request.
+  suites and the calendar's VoiceOver tests; where iOS 26 or iOS 18 behavior is not run, say why
+  in the pull request.
 - Tests follow the `writing-tests` skill. A test that starts a scroll or an animation waits for
   the outcome it asserts, not for the motion to end.
 - A CI job, checker or script change is tried against its bypasses: a renamed or commented-out
@@ -89,6 +90,10 @@ a parser of outside input:
 - Comments: run `python3 tools/check_comments.py check --base origin/dev`, then reread each new
   comment. It keeps a reason the code cannot state. Delete a comment that repeats the code,
   tells the history, names an earlier build or cites a path a reader cannot open.
+  List them all, tests included, with `git diff origin/dev...HEAD -U0 | grep -E '^\+\s*//'`;
+  a test's doc comment that says what the test or its helper does goes too.
+  A URL in a comment is Apple documentation, an RFC or a GitHub issue or pull request; the
+  checker does not read hosts, so a forum or blog link passes it.
 - `rg` the changed behavior's words in `openspec/`, `docs/` and `MIGRATE.md`, and update stale
   text.
 - A doc, skill or comment names only files, tests, jobs and behavior that exist on the base

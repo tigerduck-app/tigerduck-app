@@ -242,7 +242,7 @@ struct HomeIgnoredCourseRowTests {
         byCourse.isIgnoredByCourse = true
         let onItsOwn = SDAssignment(assignmentId: "b1", courseNo: "EE2", courseName: "EE2", title: "HW",
                                     dueDate: Self.now.addingTimeInterval(3600), isArchived: true)
-        let view = UpcomingAssignmentsView(assignments: [byCourse, onItsOwn], filter: .ignored)
+        let view = UpcomingAssignmentsView(assignments: [byCourse, onItsOwn], policy: VisualStylePolicy(preset: .default), filter: .ignored)
 
         let none = view.rowSwipeActions(for: byCourse, now: Self.now)
         #expect(none.trailing == nil)

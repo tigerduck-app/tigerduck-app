@@ -291,6 +291,7 @@ HostScreenReader.swift
 JustifiedText.swift
 LoginRequiredView.swift
 NTUSTReauthErrorBanner.swift
+Pager.swift
 PullToRevealSearch.swift
 SectionHeader.swift
 ShareSheet.swift
