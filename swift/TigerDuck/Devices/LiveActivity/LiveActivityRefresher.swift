@@ -148,8 +148,8 @@ final class LiveActivityRefresher {
 
         let assignmentLead = preferences.assignmentLiveActivityLeadTime
         if let nextDue = assignments
-            .filter({ LiveActivityScenarioResolver.isOutstanding($0) && $0.dueDate > now })
-            .min(by: { $0.dueDate < $1.dueDate })?.dueDate {
+            .filter({ LiveActivityScenarioResolver.isOutstanding($0) })
+            .compactMap(\.dueDate).filter({ $0 > now }).min() {
             candidates.append(nextDue.addingTimeInterval(-assignmentLead))
             candidates.append(nextDue)
         }

@@ -75,10 +75,11 @@ struct UpcomingAssignmentRow: View {
                     .foregroundStyle(status.tint)
                     .lineLimit(lineLimit)
             }
-            Text(timeLabel(for: assignment, now: now))
+            Text(assignment.dueLabel(now: now, absolute: showAbsoluteTime))
                 .font(timeFont(status: status))
                 .foregroundStyle(timeColor(status: status, policy: policy))
                 .lineLimit(lineLimit)
+                .accessibilityHidden(assignment.dueDate == nil)
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -95,7 +96,7 @@ struct UpcomingAssignmentRow: View {
             return (AssignmentStatus.archived.badgeLabel!, AssignmentStatus.archived.tint)
         }
         if status == .locallyCompleted || status == .archived {
-            guard assignment.dueDate < now else { return nil }
+            guard assignment.isPastDue(now: now) else { return nil }
             if let cutoff = assignment.cutoffDate, now > cutoff {
                 return (AssignmentStatus.overdueRejected.badgeLabel!, AssignmentStatus.overdueRejected.tint)
             }
@@ -123,12 +124,5 @@ struct UpcomingAssignmentRow: View {
         case .pending, .submitted, .submittedLate:
             return policy.secondaryTextColor
         }
-    }
-
-    private func timeLabel(for assignment: AssignmentStore.Assignment, now: Date) -> String {
-        if showAbsoluteTime || assignment.dueDate < now {
-            return assignment.dueDate.absoluteTimeString
-        }
-        return assignment.dueDate.relativeTimeString(from: now)
     }
 }

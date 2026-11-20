@@ -70,6 +70,34 @@ struct MoodleAssignmentServiceTests {
         #expect(records[1].teamSubmission)
     }
 
+    @Test("an assignment Moodle gives no due date is listed after the dated ones, and one taking no submissions is not")
+    @MainActor
+    func undatedAssignmentIsListed() async throws {
+        let token = UUID().uuidString
+        Self.answer(#"""
+        {"courses": [{"id": 20119, "assignments": [
+          {"id": 703, "cmid": 9103, "name": "Reading notes", "nosubmissions": 0, "duedate": 0,
+           "allowsubmissionsfromdate": 0, "cutoffdate": 0, "intro": ""},
+          {"id": 704, "cmid": 9104, "name": "Attendance", "nosubmissions": 1, "duedate": 0,
+           "allowsubmissionsfromdate": 0, "cutoffdate": 0, "intro": ""},
+          {"id": 701, "cmid": 9101, "name": "HW 2: Linked lists", "nosubmissions": 0, "duedate": 1790600000,
+           "allowsubmissionsfromdate": 0, "cutoffdate": 0, "intro": ""}
+        ]}], "warnings": []}
+        """#, function: "mod_assign_get_assignments", token: token)
+
+        let records = try await MoodleAssignmentService.fetchAssignments(
+            courseIds: [20119], tokens: .init(stored: { token }, renew: { _ in token }),
+            session: Self.session(), siteURL: Self.site
+        )
+        let assignments = AssignmentRecords.assignments(
+            from: records, moodleCoursesById: [:], courseNoByMoodleId: [:], statuses: [:], confirmed: [:],
+            marks: AssignmentMarks(archivedIds: [], locallyCompletedIds: [], ignoredCourses: [], semester: "1151")
+        )
+
+        #expect(assignments.upcomingSorted().map(\.assignmentId) == ["701", "703"])
+        #expect(assignments.map(\.dueDate) == [nil, Date(timeIntervalSince1970: 1_790_600_000)])
+    }
+
     private static func submission(_ json: String) throws -> MoodleAssignmentSubmission {
         try JSONDecoder().decode(RawSubmissionStatusResponse.self, from: Data(json.utf8)).submission
     }

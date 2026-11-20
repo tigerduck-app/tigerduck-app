@@ -26,7 +26,7 @@ struct CalendarDeadlineAssignmentTests {
             let school = SDCalendarEvent(
                 eventId: "school-survey", title: "Course survey opens", date: CalendarDeadlineAssignmentTests.due, source: .school
             )
-            cache.assignments.saveCalendarEvents(shown.map(AssignmentRecords.moodleCalendarEvent) + [school], for: testSignIn)
+            cache.assignments.saveCalendarEvents(shown.compactMap(AssignmentRecords.moodleCalendarEvent) + [school], for: testSignIn)
         }
 
         func cacheRecords(_ ids: [Int]) {
@@ -164,7 +164,7 @@ struct CalendarDayListScreenTests {
     }
 
     private static func page(opened: Opened) -> some View {
-        let events = [assignment, unlisted].map(AssignmentRecords.moodleCalendarEvent) + [school]
+        let events = [assignment, unlisted].compactMap(AssignmentRecords.moodleCalendarEvent) + [school]
         return ScrollView {
             DayEventListView(
                 date: due, events: events,
@@ -210,8 +210,8 @@ struct CalendarDayListScreenTests {
     @Test("at the largest text size no text of a calendar row is squeezed into a narrow column", arguments: [true, false])
     func noTextSqueezedAtTheLargestSize(deadline: Bool) async throws {
         try await withAccessibilityAutomation {
-            let event = deadline
-                ? AssignmentRecords.moodleCalendarEvent(Self.assignment)
+            let event = try deadline
+                ? #require(AssignmentRecords.moodleCalendarEvent(Self.assignment))
                 : SDCalendarEvent(
                     eventId: "school-evaluation", title: "Course evaluation survey opens for every undergraduate course",
                     date: TaipeiTime.calendar.startOfDay(for: Self.due), source: .school

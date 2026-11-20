@@ -10,6 +10,7 @@ final class MoodleCourseAssignments {
 
         var id: Int { record.assignId }
         var dueDate: Date? { record.dueDate(extendedTo: listed?.extensionDueDate) }
+        var title: String { record.name.decodingHTMLEntities() }
     }
 
     private(set) var list: [Entry] = []
