@@ -50,8 +50,8 @@ struct HomeAssignmentFilterSwitchTests {
         var description: String { "\(title) at \(top), \(height) high" }
     }
 
-    /// Unfinished, overdue, submitted, marked done and ignored, over three courses. The two
-    /// filters order the overdue ones differently, so a switch moves rows as well as adding them.
+    /// The two filters order the overdue ones differently, so a switch moves rows as well as
+    /// adding them.
     static func fixtures(now: Date) -> [SDAssignment] {
         let hour: TimeInterval = 3600
         func make(
@@ -79,8 +79,6 @@ struct HomeAssignmentFilterSwitchTests {
 
     static let titles = ["u1", "c2", "u2", "o1", "c1", "u3", "o2", "l1", "a1"].map { "Homework \($0)" }
 
-    /// Each filter's rows, top to bottom: unfinished by due date; everything not ignored, the
-    /// upcoming ones first and then the past ones from the latest.
     static let shown: [AssignmentFilter: [String]] = [
         .incomplete: ["o2", "o1", "u1", "u2", "u3"].map { "Homework \($0)" },
         .all: ["u1", "u2", "c1", "u3", "l1", "o1", "c2", "o2"].map { "Homework \($0)" },
@@ -101,7 +99,6 @@ struct HomeAssignmentFilterSwitchTests {
         }
     }
 
-    /// A 375 pt window tall enough that nothing scrolls, once the List has laid its rows out.
     static func show(_ model: Model, policy: VisualStylePolicy) async throws -> UIWindow {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
@@ -115,8 +112,6 @@ struct HomeAssignmentFilterSwitchTests {
         return window
     }
 
-    /// The assignment rows the List shows, top to bottom, with the frames their cells are laid out at
-    /// in the window.
     static func cells(in window: UIWindow) -> [(title: String, frame: CGRect)] {
         guard let list = window.rootViewController?.view.descendants(ofType: UICollectionView.self).first else { return [] }
         return list.visibleCells.sorted { $0.frame.minY < $1.frame.minY }.compactMap { cell in
@@ -130,9 +125,7 @@ struct HomeAssignmentFilterSwitchTests {
         cells(in: window).map { Row(title: $0.title, top: ($0.frame.minY * 2).rounded() / 2, height: ($0.frame.height * 2).rounded() / 2) }
     }
 
-    /// What the grouped style draws for a row's place in the list: the page showing at its top and
-    /// bottom left corners where the container rounds, and the divider along its bottom. The card
-    /// style draws every card the same wherever it is, so only its frames show a place.
+    /// The card style draws every card the same wherever it is, so only its frames show a place.
     struct Decoration: Equatable, CustomStringConvertible {
         let roundedTop: Bool
         let roundedBottom: Bool
@@ -164,7 +157,6 @@ struct HomeAssignmentFilterSwitchTests {
         let decorations: [Decoration]?
     }
 
-    /// The rows of a List that showed them from the start, and their decorations.
     static func settled(
         _ filter: AssignmentFilter, now: Date, policy: VisualStylePolicy, done: Set<String> = [], savedAs name: String
     ) async throws -> Settled {
@@ -197,7 +189,6 @@ struct HomeAssignmentFilterSwitchTests {
         "home-assignment-filter-\(policy.assignmentRowStyle == .card ? "card" : "grouped")-\(change)"
     }
 
-    /// Once the motion is over, the rows and their decorations are the settled list's and stay so.
     static func expectAtRest(
         _ window: UIWindow, as settled: Settled, policy: VisualStylePolicy, savedAs name: String, since start: ContinuousClock.Instant
     ) async throws {
@@ -211,8 +202,6 @@ struct HomeAssignmentFilterSwitchTests {
         #expect(decorations(in: window, policy: policy) == settled.decorations, "\(name) a second after the change")
     }
 
-    /// In the first frame the rows already have their settled frames; their content then moves and
-    /// fades there with the List's animation.
     @Test("A filter switch lays the rows out in its first frame as they settle", arguments: [VisualPreset.default, .iosInspired])
     func firstFrameIsTheSettledOne(preset: VisualPreset) async throws {
         try await Self.onHome { now in
@@ -237,7 +226,6 @@ struct HomeAssignmentFilterSwitchTests {
         }
     }
 
-    /// A refresh and a swipe's mark both change the assignments and work the list out again.
     @Test("A row that leaves the top or the bottom hands its place's spacing on in the first frame", arguments: [VisualPreset.default, .iosInspired])
     func rowsLeavingTheEnds(preset: VisualPreset) async throws {
         try await Self.onHome { now in
