@@ -237,6 +237,9 @@ struct CalendarMonthSwipeScreenTests {
 
             try await screen.swipe(0.6)
             try await screen.settle(on: Self.january)
+            if #unavailable(iOS 26) {
+                try await waitUntil { !posts.titles.isEmpty }
+            }
             let swiped = screen.pager.contentOffset.x
 
             let previous = try #require(accessibilityElement(labeled: String(localized: "a11y_calendar_nav_prev"), in: screen.window))
