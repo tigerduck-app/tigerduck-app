@@ -1,9 +1,4 @@
 import SwiftUI
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 struct ClassTableShareSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -120,12 +115,7 @@ private struct CopyLinkButton: View {
     var body: some View {
         Button {
             guard let link else { return }
-            #if canImport(UIKit)
-            UIPasteboard.general.string = link
-            #elseif canImport(AppKit)
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(link, forType: .string)
-            #endif
+            Pasteboard.copy(link)
             AccessibilityNotification.Announcement(String(localized: "class_table_share_link_copied")).post()
             isCopied = true
             copies += 1
