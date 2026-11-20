@@ -12,7 +12,12 @@ final class FakeAlternateIconHost: AlternateIconHost {
     var supportsAlternateIcons = true
     var alternateIconName: String?
     var refuses = false
+    /// Keeps the next change waiting, after the new icon shows, until `release()`, as iOS does
+    /// while its alert is up. Later changes return at once.
+    var holds = false
     private(set) var requests: [String?] = []
+    private var held: CheckedContinuation<Void, Never>?
+    var isHolding: Bool { held != nil }
 
     init(showing name: String? = nil) {
         alternateIconName = name
@@ -22,6 +27,15 @@ final class FakeAlternateIconHost: AlternateIconHost {
         requests.append(alternateIconName)
         if refuses { throw Refused() }
         self.alternateIconName = alternateIconName
+        if holds {
+            holds = false
+            await withCheckedContinuation { held = $0 }
+        }
+    }
+
+    func release() {
+        held?.resume()
+        held = nil
     }
 }
 
@@ -148,6 +162,24 @@ struct AppIconTests {
             let host = FakeAlternateIconHost(showing: "TigerDuck")
             await AppIconSwitch.reconcile(host: host, primary: .tigerDuck)
             #expect(host.requests == [nil])
+        }
+    }
+
+    @Test("a return to the app while iOS is still changing the icon asks nothing, so it cannot undo the change")
+    func reconcileWhileChanging() async throws {
+        try await Self.withStoredChoice(nil) {
+            let host = FakeAlternateIconHost()
+            host.holds = true
+            let choosing = Task { await AppIconSwitch.choose(.tigerDuck, host: host, primary: Self.primary) }
+            try await waitUntil { host.isHolding }
+
+            await AppIconSwitch.reconcile(host: host, primary: Self.primary)
+            host.release()
+            await choosing.value
+
+            #expect(host.requests == ["TigerDuck"])
+            #expect(host.alternateIconName == "TigerDuck")
+            #expect(Defaults[.appIcon] == .tigerDuck)
         }
     }
 

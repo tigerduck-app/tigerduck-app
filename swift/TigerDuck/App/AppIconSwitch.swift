@@ -34,10 +34,16 @@ enum AppIconSwitch {
         _ = await show(Defaults[.appIcon], host: host, primary: primary)
     }
 
+    /// iOS's alert for a new icon can make the scene active again before the change returns, and
+    /// a second change then could undo the first.
+    private static var isChanging = false
+
     private static func show(_ choice: AppIcon?, host: any AlternateIconHost, primary: AppIcon?) async -> Bool {
         let name = alternateName(for: choice, primary: primary)
         guard host.alternateIconName != name else { return true }
-        guard host.supportsAlternateIcons else { return false }
+        guard host.supportsAlternateIcons, !isChanging else { return false }
+        isChanging = true
+        defer { isChanging = false }
         do {
             try await host.setAlternateIconName(name)
             return true
