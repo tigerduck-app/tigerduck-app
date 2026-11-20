@@ -43,7 +43,6 @@ extension Array where Element == SDAssignment {
 }
 
 extension Sequence {
-    /// Those with a due date in `areInOrder`'s order, then those without one by title.
     func sortedByDueDate(
         _ dueDate: (Element) -> Date?, title: (Element) -> String, by areInOrder: (Date, Date) -> Bool
     ) -> [Element] {
@@ -57,7 +56,6 @@ extension Sequence {
         }
     }
 
-    /// What is to come by due time, then what has passed, latest first, then the undated by title.
     func partitionedByDueDate(_ dueDate: (Element) -> Date?, title: (Element) -> String, now: Date) -> [Element] {
         sortedByDueDate(dueDate, title: title) { lhs, rhs in
             let lhsToCome = lhs >= now
