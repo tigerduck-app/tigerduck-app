@@ -118,5 +118,50 @@ struct CourseChangeScreensTests {
             #expect(!labels.contains { $0.contains("計算機網路, \(assessment)") })
         }
     }
+
+    @Test("the class table's today cards underline an assessment but not a cancelled one, and show an online class in its room's place", arguments: looks)
+    func todayCards(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let now = AppClock.now()
+            let today = [TaipeiTime.dayKey(for: now)]
+            func course(_ courseNo: String, _ name: String, _ room: String, _ periods: [String]) -> SDCourse {
+                SDCourse(courseNo: courseNo, courseName: name, classroom: room, schedule: Dictionary(uniqueKeysWithValues: (1...7).map { ($0, periods) }))
+            }
+            let courses = [
+                course("CS3001301", "作業系統", "TR-313", ["2", "3"]),
+                course("CS3002301", "計算機網路", "IB-201", ["4"]),
+                course("CS3003301", "資料結構", "TR-412", ["6", "7"]),
+                course("EE3004301", "電子學", "EE-404", ["8", "9"]),
+            ]
+            let changes = try CourseChanges(json: CourseChangesTests.feed([
+                CourseChangesTests.row(1, "assessment", course: "CS3001301", days: today, values: Self.exam),
+                CourseChangesTests.row(2, "online", course: "CS3002301", days: today),
+                CourseChangesTests.row(3, "assessment", course: "CS3003301", days: today, values: Self.exam),
+                CourseChangesTests.row(4, "online", course: "CS3003301", days: today),
+                CourseChangesTests.row(5, "assessment", course: "EE3004301", days: today, values: Self.exam),
+                CourseChangesTests.row(6, "cancelled", course: "EE3004301", days: today),
+            ]))
+            let ongoing = courses.prefix(2).map { course in
+                OngoingCourseInfo(slot: CourseTimeSlot.buildSlots(from: [course], weekday: now.scheduleWeekday, on: now, changes: changes)[0], course: course)
+            }
+            let carousel = TodayCourseCarousel(
+                courses: courses, hasAssignment: { _ in false }, showProgress: false, ongoing: ongoing, changes: changes
+            )
+            let window = try ClubScreensTests.show(carousel, look: look.club, width: look.width, height: 260)
+            defer { window.isHidden = true }
+            let assessment = String(localized: "course_change_assessment")
+            let online = String(localized: "course_change_online")
+            try await waitUntil { exposedAccessibilityLabels(in: window).contains { $0.contains("作業系統, \(assessment)") } }
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: "today-cards-\(look.testDescription)")
+
+            let labels = exposedAccessibilityLabels(in: window)
+            let network = try #require(labels.first { $0.contains("計算機網路") })
+            #expect(network.contains(online) && !network.contains(assessment))
+            let structures = try #require(labels.first { $0.contains("資料結構") })
+            #expect(structures.contains("資料結構, \(assessment)") && structures.contains(online) && !structures.contains("TR-412"))
+            #expect(labels.first { $0.contains("電子學") }?.contains(assessment) == false)
+        }
+    }
 }
 #endif

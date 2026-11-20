@@ -22,16 +22,15 @@ struct CurrentClassCard: View {
                     .foregroundStyle(Color.textPrimary)
             }
 
-            Text(info.course.displayName)
+            Text.courseName(info.course.displayName, isAssessment: info.slot.assessment != nil)
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(2)
 
             let classroom = info.classroom
             if !classroom.isEmpty {
-                Text(classroom)
+                (info.slot.hasChangedRoom ? Text.changedRoom(classroom) : Text(classroom).foregroundStyle(Color.textSecondary))
                     .font(TigerDuckTheme.Typography.caption)
-                    .foregroundStyle(Color.textSecondary)
                     .lineLimit(1)
             }
 

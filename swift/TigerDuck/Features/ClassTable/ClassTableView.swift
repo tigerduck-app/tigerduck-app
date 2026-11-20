@@ -178,6 +178,7 @@ struct ClassTableView: View {
                 hasAssignment: viewModel.hasAssignment,
                 showProgress: false,
                 ongoing: viewModel.ongoingCourses,
+                changes: viewModel.grid.courseChanges,
                 onSelect: { viewModel.selection.select(today: $0, now: AppClock.now()) },
                 onSelectOngoing: { info in
                     viewModel.selectOngoing(info)
