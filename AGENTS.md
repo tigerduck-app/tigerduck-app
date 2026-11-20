@@ -46,6 +46,7 @@ python3 tools/check_macos_sources.py
 python3 tools/check_privacy_manifests.py
 python3 tools/localization/check_keys.py
 python3 tools/generate_licenses.py --check
+python3 tools/generate_app_icon_previews.py --check
 python3 -m unittest discover -s tools -p 'test_*.py'
 ```
 

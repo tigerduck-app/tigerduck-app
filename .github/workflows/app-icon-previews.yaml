@@ -1,0 +1,19 @@
+name: App icon previews
+
+on:
+  pull_request:
+    branches: [main, dev]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          fetch-depth: 1
+          # No submodules: this reads swift/AppIcons/ and tools/app-icon-previews.json only.
+
+      # Offline and without Xcode: rendering needs ictool, so the check compares digests of the
+      # Icon Composer documents with the ones recorded when their previews were rendered.
+      - name: Check every app icon has previews rendered from its current document
+        run: python3 tools/generate_app_icon_previews.py --check
