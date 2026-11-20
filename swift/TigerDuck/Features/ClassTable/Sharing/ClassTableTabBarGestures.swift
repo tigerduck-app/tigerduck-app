@@ -3,7 +3,7 @@ import UIKit
 import UIKit.UIGestureRecognizerSubclass
 
 /// The class table tab's long press, which opens the switcher next to the tab, and double tap,
-/// which goes back to the class table shown before, or within 3 s of the last double tap shows
+/// which goes back to the class table shown before, or within 1.5 s of the last double tap shows
 /// the next one. `TabView` has no gesture API for its items, so both go on the
 /// system tab bar, where the tab is found by its title. Put it behind the `TabView`.
 struct ClassTableTabBarGestures: UIViewRepresentable {
@@ -90,7 +90,7 @@ final class ClassTableTabBarHandler: NSObject, UIContextMenuInteractionDelegate,
     private var hasLoggedMissingTab = false
     private var lastDoubleTap: ContinuousClock.Instant?
 
-    static let cyclingWindow: Duration = .seconds(3)
+    static let cyclingWindow: Duration = .milliseconds(1500)
 
     init(store: ImportedClassTableStore) {
         self.store = store

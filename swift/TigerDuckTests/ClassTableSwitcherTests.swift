@@ -235,7 +235,7 @@ struct ClassTableSwitcherTests {
         #expect(people.store.shownPersonID == nil)
     }
 
-    @Test("a double tap after a pause goes back to the class table before; quick ones step through the list")
+    @Test("a double tap over 1.5 s after the last goes back to the class table before; quicker ones step through the list")
     func doubleTapGoesBackAfterAPause() async throws {
         let people = try Self.people(Folder())
         let hosted = try await host(people.store)
@@ -247,10 +247,10 @@ struct ClassTableSwitcherTests {
 
         hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start)
         #expect(people.store.shownPersonID == people.ming.id)
-        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(2))
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .milliseconds(1500))
         #expect(people.store.shownPersonID == people.hua.id)
-        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(4))
-        #expect(people.store.shownPersonID == nil)
+        hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .milliseconds(3100))
+        #expect(people.store.shownPersonID == people.ming.id)
         hosted.handler.doubleTapped(at: center, startedOnClassTable: true, now: start + .seconds(8))
         #expect(people.store.shownPersonID == people.hua.id)
     }
