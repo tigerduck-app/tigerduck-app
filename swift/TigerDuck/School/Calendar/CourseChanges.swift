@@ -41,7 +41,6 @@ nonisolated struct CourseChange: Equatable, Sendable {
         }
     }
 
-    /// What the course sheet lists for an assessment, an online class or a note.
     var listedText: String? {
         let detail = note().flatMap { $0.isEmpty ? nil : $0 }
         return switch kind {
