@@ -69,7 +69,7 @@ nonisolated extension SettingsRow {
         case .mailNotifications, .mailDisplayName, .mailStorage: .page(.mail)
         case .flipToLibrary, .librarySignOut: .page(.library)
         case .addressBar, .websiteData: .page(.browser)
-        case .moodleNotifications, .moodleOpenIn, .moodleStorage: .page(.moodle)
+        case .moodleNotifications, .moodleOpenIn, .pinMyself, .moodleStorage: .page(.moodle)
         }
     }
 
