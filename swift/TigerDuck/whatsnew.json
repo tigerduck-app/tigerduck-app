@@ -854,5 +854,27 @@
         }
       ]
     }
+  },
+  "4.0.0": {
+    "zh-TW": {
+      "title": "4.0.0 更新內容",
+      "items": [
+        { "symbol": "person.3", "title": "社團", "body": "訂閱社團，活動顯示在課表與首頁。" },
+        { "symbol": "globe", "title": "資訊系統", "body": "列出學生資訊系統的連結，App 內瀏覽器會自動登入學校網站。" },
+        { "symbol": "gearshape.2", "title": "設定", "body": "設定依頁面分組，並可搜尋。" },
+        { "symbol": "envelope", "title": "校園信箱", "body": "滑動即可刪除或標記，寄出後 5 秒內可取消。" },
+        { "symbol": "square.grid.2x2", "title": "小工具與 Apple Watch", "body": "課表小工具重新設計，Watch 顯示上課時段、倒數與教室。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 4.0.0",
+      "items": [
+        { "symbol": "person.3", "title": "Clubs", "body": "Subscribe to clubs and see their activities on the class table and Home." },
+        { "symbol": "globe", "title": "Information system", "body": "Lists the student portal's links, and the in-app browser signs in to school sites for you." },
+        { "symbol": "gearshape.2", "title": "Settings", "body": "Settings are grouped by page and can be searched." },
+        { "symbol": "envelope", "title": "School Mail", "body": "Swipe to delete or flag, and undo a sent mail within five seconds." },
+        { "symbol": "square.grid.2x2", "title": "Widgets and Apple Watch", "body": "Redesigned timetable widgets, and the Watch shows class times, countdowns and rooms." }
+      ]
+    }
   }
 }
