@@ -181,10 +181,18 @@ struct ClassTableSwitcherTests {
         let tab: CGRect
     }
 
-    private func host(_ store: ImportedClassTableStore, requestImport: @escaping () -> Void = {}) async throws -> Hosted {
+    private func host(
+        _ store: ImportedClassTableStore, width: CGFloat? = nil, look: ClubScreensTests.Look? = nil,
+        requestImport: @escaping () -> Void = {}
+    ) async throws -> Hosted {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.frame = scene.coordinateSpace.bounds
+        if let width { window.frame.size.width = width }
+        if let look {
+            window.overrideUserInterfaceStyle = look.style
+            window.traitOverrides.preferredContentSizeCategory = look.textSize
+        }
         window.rootViewController = UIHostingController(
             rootView: Tabs(store: store).environment(\.requestClassTableImport, requestImport)
         )
@@ -230,9 +238,9 @@ struct ClassTableSwitcherTests {
         let people = try Self.people(Folder())
         let here = Count()
         let elsewhere = Count()
-        let hosted = try await host(people.store) { here.value += 1 }
+        let hosted = try await host(people.store, requestImport: { here.value += 1 })
         defer { hosted.window.isHidden = true }
-        let other = try await host(people.store) { elsewhere.value += 1 }
+        let other = try await host(people.store, requestImport: { elsewhere.value += 1 })
         defer { other.window.isHidden = true }
 
         ClassTableSwitcherEntry.importClassTable.choose(in: people.store, requestImport: hosted.handler.requestImport)
@@ -376,6 +384,89 @@ struct ClassTableSwitcherTests {
         let readOnly = window.convert(CGPoint(x: 195, y: 300), to: host)
         #expect(menus.delegate?.contextMenuInteraction(menus, configurationForMenuAtLocation: editable) != nil)
         #expect(menus.delegate?.contextMenuInteraction(menus, configurationForMenuAtLocation: readOnly) == nil)
+    }
+
+    /// Ming in the rotation, Hua in the long-press menu, and Wei and Lin in Other.
+    private static func everyPlacement(_ folder: Folder, names: [String] = ["Ming", "Hua", "Wei", "Lin"]) throws -> ImportedClassTableStore {
+        let store = ImportedClassTableStore(fileURL: folder.file, signedInStudentId: { "B11300000" })
+        let ids = try names.enumerated().map { index, name in
+            try #require(store.add(code("B1130000\(index + 1)"), nickname: name, courses: [:], for: testSignIn)).id
+        }
+        store.move(ids[1], to: .longPressMenu, before: nil, for: testSignIn)
+        store.move(ids[2], to: .other, before: nil, for: testSignIn)
+        store.move(ids[3], to: .other, before: nil, for: testSignIn)
+        return store
+    }
+
+    private static func menuItem(_ label: String, in window: UIWindow) -> NSObject? {
+        exposedAccessibilityElements(in: window).first { $0.accessibilityLabel == label && $0.accessibilityTraits.contains(.button) }
+    }
+
+    private static func center(of item: NSObject, in window: UIWindow) -> CGPoint {
+        let frame = item.accessibilityFrame
+        return window.convert(CGPoint(x: frame.midX, y: frame.midY), from: window.screen.coordinateSpace)
+    }
+
+    private func pressTab(_ hosted: Hosted, until label: String) async throws -> (Finger, CGPoint) {
+        let start = hosted.bar.convert(CGPoint(x: hosted.tab.midX, y: hosted.tab.midY), to: hosted.window)
+        let finger = try Finger(in: hosted.window)
+        try finger.down(at: start)
+        try await waitUntil(timeout: .seconds(10)) { Self.menuItem(label, in: hosted.window) != nil }
+        return (finger, start)
+    }
+
+    @Test("a finger that presses the tab, slides onto an item and lifts there runs it, inside Other too",
+          arguments: ["import", "Ming", "Hua", "Lin"])
+    func pressSlideAndLift(target: String) async throws {
+        try await withAccessibilityAutomation {
+            let store = try Self.everyPlacement(Folder())
+            let imports = Count()
+            let hosted = try await host(store, requestImport: { imports.value += 1 })
+            defer { hosted.window.isHidden = true }
+            let other = String(localized: "class_table_list_section_other")
+            let first = target == "import" ? String(localized: "class_table_import") : target == "Lin" ? other : target
+
+            let (finger, start) = try await pressTab(hosted, until: first)
+            var at = Self.center(of: try #require(Self.menuItem(first, in: hosted.window)), in: hosted.window)
+            try await finger.slide(from: start, to: at, steps: 16)
+            if target == "Lin" {
+                try await waitUntil(timeout: .seconds(10)) { Self.menuItem("Lin", in: hosted.window) != nil }
+                try await Task.sleep(for: .milliseconds(500))
+                let lin = Self.center(of: try #require(Self.menuItem("Lin", in: hosted.window)), in: hosted.window)
+                try await finger.slide(from: at, to: lin, steps: 12)
+                at = lin
+            }
+            try await Task.sleep(for: .milliseconds(300))
+            try finger.up(at: at)
+
+            if target == "import" {
+                try await waitUntil(timeout: .seconds(5)) { imports.value == 1 }
+                #expect(store.shownPersonID == nil)
+            } else {
+                try await waitUntil(timeout: .seconds(5)) { store.shownPerson?.nickname == target }
+                #expect(imports.value == 0)
+            }
+        }
+    }
+
+    @Test("the tab's menu with long nicknames, at both phone widths and in each look",
+          arguments: ClubScreensTests.looks, [CGFloat(375), 402])
+    func menuSnapshots(look: ClubScreensTests.Look, width: CGFloat) async throws {
+        try await withAccessibilityAutomation {
+            let names = ["Wolfeschlegelsteinhausenbergerdorff from the Club", "王小明的室友兼社團學長兼家教學生", "Wei", "Lin"]
+            let store = try Self.everyPlacement(Folder(), names: names)
+            let hosted = try await host(store, width: width, look: look)
+            defer { hosted.window.isHidden = true }
+
+            let (finger, start) = try await pressTab(hosted, until: names[1])
+            try await Task.sleep(for: .milliseconds(600))
+            let language = Bundle.main.preferredLocalizations.first ?? "en"
+            hosted.window.saveSnapshot(
+                as: "class-table-menu-\(look.testDescription)-\(Int(width))-\(language)-\(UIDevice.current.systemVersion)"
+            )
+            #expect(Self.menuItem(String(localized: "class_table_import"), in: hosted.window) != nil)
+            try finger.up(at: start)
+        }
     }
 
     private static func views(in view: UIView) -> [UIView] {
