@@ -24,6 +24,7 @@ struct ScoreCourseDetailSheet: View {
             .padding(.bottom, TigerDuckTheme.Spacing.lg)
         }
         .background(Color.backgroundPrimary)
+        .toastHost()
         .onAppear(perform: resolveRosterCourse)
     }
 
@@ -52,12 +53,9 @@ struct ScoreCourseDetailSheet: View {
     private var infoRows: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
             if let rosterCourse {
-                DetailInfoRow(
-                    label: String(localized: "course_detail_instructor_label"),
-                    value: rosterCourse.instructor.isEmpty ? "—" : rosterCourse.instructor
-                )
+                CopyableDetailRow.instructor(rosterCourse.instructor)
             }
-            DetailInfoRow(label: String(localized: "course_detail_code_label"), value: course.code)
+            CopyableDetailRow.code(course.code)
             DetailInfoRow(
                 label: String(localized: "course_detail_credits_label"), value: course.credits.map(\.creditsText) ?? "—"
             )
@@ -68,10 +66,7 @@ struct ScoreCourseDetailSheet: View {
                         value: "\(rosterCourse.enrolledCount) / \(rosterCourse.maxCount)"
                     )
                 }
-                DetailInfoRow(
-                    label: String(localized: "course_detail_location_label"),
-                    value: rosterCourse.classroom.isEmpty ? "—" : rosterCourse.classroom
-                )
+                CopyableDetailRow.location(rosterCourse.classroom)
                 let scheduleCode = formatScheduleCode(rosterCourse.schedule)
                 if !scheduleCode.isEmpty {
                     DetailInfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)

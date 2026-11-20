@@ -253,4 +253,11 @@ struct CopyableDetailRow: View {
             hint: "course_detail_copy_code", toast: "course_detail_code_copied"
         )
     }
+
+    static func location(_ classroom: String) -> CopyableDetailRow {
+        CopyableDetailRow(
+            label: String(localized: "course_detail_location_label"), value: classroom,
+            hint: "class_table_copy_location", toast: "class_table_location_copied"
+        )
+    }
 }

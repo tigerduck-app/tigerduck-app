@@ -78,6 +78,7 @@ jobs:
               TigerDuckTests/ClassTableWeekHeaderTests
               TigerDuckTests/ClubScreensTests
               TigerDuckTests/CopyToastScreenTests
+              TigerDuckTests/ScoreCourseSheetScreenTests
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
               TigerDuckTests/CourseSyllabusPageTests
