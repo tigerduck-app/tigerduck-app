@@ -184,7 +184,7 @@ private struct BrowserCertificateView: View {
             if chain.indices.contains(selected) {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(String(localized: "browser_certificate_copy"), systemImage: copied ? "checkmark" : "doc.on.doc") {
-                        UIPasteboard.general.string = Self.summary(of: chain[selected])
+                        Pasteboard.copy(Self.summary(of: chain[selected]))
                         copied = true
                         Task {
                             try? await AppClock.sleep(until: ContinuousClock.now + .seconds(1.4))
