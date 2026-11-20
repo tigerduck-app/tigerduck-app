@@ -627,6 +627,21 @@ struct CourseChangesTests {
         }
     }
 
+    @Test func aClassTableCellShowsAChangedRoomEvenWithoutATimetableRoomCodeButOnlyWhenRoomsAreShown() throws {
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "", schedule: [4: ["2", "3", "4"]])
+        let online = String(localized: "course_change_online")
+        let changes = try Self.changes([Self.row(1, "online")])
+        let meeting = CourseTimeSlot.meeting(of: course, periods: ["2", "3", "4"], on: Self.thursday, changes: changes)
+        let hint = CourseRoomHint.room(for: course, weekday: 4, periodId: "2")
+
+        #expect(hint == nil)
+        let shown = CourseRoomHint.roomLine(meeting: meeting, hint: hint, showsRooms: true)
+        #expect(shown?.room == online && shown?.isChanged == true)
+        #expect(CourseRoomHint.roomLine(meeting: meeting, hint: hint, showsRooms: false) == nil)
+        let timetable = CourseRoomHint.roomLine(meeting: nil, hint: "TR-313", showsRooms: true)
+        #expect(timetable?.room == "TR-313" && timetable?.isChanged == false)
+    }
+
     @Test func aConflictCellIsRedrawnWhenOneOfItsClassesBecomesAnAssessment() {
         let other = SDCourse(courseNo: "CC901", courseName: "Parsing", classroom: "T4-502", schedule: [4: ["3", "4"]])
         let pair = ClassTableGrid.CellRole.conflictStart(

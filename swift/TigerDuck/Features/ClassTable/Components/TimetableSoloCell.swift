@@ -114,10 +114,8 @@ struct TimetableSoloCell: View {
         init?(meeting: CourseTimeSlot?, roomHint: String?, showsRooms: Bool) {
             if meeting?.isCancelled == true {
                 self = .cancelled
-            } else if let meeting, meeting.hasChangedRoom, showsRooms {
-                self = .changedRoom(meeting.room)
-            } else if let roomHint {
-                self = .room(roomHint)
+            } else if let line = CourseRoomHint.roomLine(meeting: meeting, hint: roomHint, showsRooms: showsRooms) {
+                self = line.isChanged ? .changedRoom(line.room) : .room(line.room)
             } else {
                 return nil
             }
