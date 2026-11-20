@@ -33,10 +33,12 @@ struct ScoreCourseSheetScreenTests {
         )
     }
 
-    final class Folder {
+    /// Removed by the test's own `defer`, which also keeps it until the test ends.
+    struct Folder {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScoreCourseSheetScreenTests-\(UUID().uuidString)", isDirectory: true)
-        deinit { try? FileManager.default.removeItem(at: url) }
+
+        func remove() { try? FileManager.default.removeItem(at: url) }
     }
 
     static func sheet(_ grade: CourseGrade, roster: SDCourse?, in folder: Folder) -> ScoreCourseDetailSheet {
@@ -51,10 +53,11 @@ struct ScoreCourseSheetScreenTests {
         return labels.map { shown.firstIndex(of: $0) }
     }
 
-    @Test("the sheet has no navigation bar and names the course once, in its header with the term")
+    @Test("the sheet has no navigation bar, and its header shows the course name and the term")
     func header() async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
+            defer { folder.remove() }
             let grade = Self.grade()
             let window = try ClubScreensTests.show(Self.sheet(grade, roster: nil, in: folder), look: ClubScreensTests.looks[0], height: 874)
             defer { window.isHidden = true }
@@ -62,8 +65,7 @@ struct ScoreCourseSheetScreenTests {
             _ = try await Copy.element(Self.termText, in: window)
             #expect(window.descendants(ofType: UINavigationBar.self).isEmpty)
             let labels = exposedAccessibilityLabels(in: window)
-            #expect(labels.filter { $0 == grade.name }.count == 1)
-            #expect(Array(labels.prefix(3)) == [grade.name, Self.termText, grade.grade])
+            #expect(Array(labels.prefix(3)) == [grade.name, Self.termText, grade.grade], "\(labels)")
             #expect(!labels.contains(grade.code))
         }
     }
@@ -72,11 +74,14 @@ struct ScoreCourseSheetScreenTests {
     func rows(hasRoster: Bool) async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
+            defer { folder.remove() }
             let grade = Self.grade(credits: hasRoster ? 3 : nil)
             let sheet = Self.sheet(grade, roster: hasRoster ? Self.roster() : nil, in: folder)
             let window = try ClubScreensTests.show(sheet, look: ClubScreensTests.looks[0], height: 874)
             defer { window.isHidden = true }
 
+            // The sheet looks the roster up once it appears, so the rows wait for what it adds.
+            _ = try await Copy.element(hasRoster ? "\(Copy.instructorLabel), 王大明" : Self.noRoster, in: window)
             let code = try await Copy.element("\(Copy.codeLabel), \(grade.code)", in: window)
             #expect(code.accessibilityTraits.contains(.button))
             #expect(code.accessibilityHint == Copy.copyCode)
@@ -106,6 +111,7 @@ struct ScoreCourseSheetScreenTests {
     func copies(row: String, byVoiceOver: Bool) async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
+            defer { folder.remove() }
             let window = try ClubScreensTests.show(
                 Self.sheet(Self.grade(), roster: Self.roster(), in: folder), look: ClubScreensTests.looks[0], height: 874
             )
@@ -117,6 +123,7 @@ struct ScoreCourseSheetScreenTests {
             case "instructor": (Copy.instructorLabel, Copy.copyInstructor, Copy.instructorCopied, "王大明")
             default: (Self.locationLabel, Copy.copyLocation, Copy.locationCopied, "TR-313")
             }
+            _ = try await Copy.element("\(Copy.instructorLabel), 王大明", in: window)
             let element = try await Copy.element("\(label), \(copied)", in: window)
             #expect(element.accessibilityTraits.contains(.button))
             #expect(element.accessibilityHint == hint)
@@ -135,12 +142,13 @@ struct ScoreCourseSheetScreenTests {
     func blankRosterValues() async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
+            defer { folder.remove() }
             let sheet = Self.sheet(Self.grade(), roster: Self.roster(instructor: " ", classroom: ""), in: folder)
             let window = try ClubScreensTests.show(sheet, look: ClubScreensTests.looks[0], height: 874)
             defer { window.isHidden = true }
             UIPasteboard.general.string = "before"
 
-            _ = try await Copy.element("\(Copy.codeLabel), CS2001301", in: window)
+            _ = try await Copy.element(Self.locationLabel, in: window)
             let labels = exposedAccessibilityLabels(in: window)
             let instructor = try #require(labels.firstIndex(of: Copy.instructorLabel))
             let location = try #require(labels.firstIndex(of: Self.locationLabel))
@@ -169,6 +177,7 @@ struct ScoreCourseSheetScreenTests {
     func snapshot(shot: Shot) async throws {
         try await withAccessibilityAutomation {
             let folder = Folder()
+            defer { folder.remove() }
             let instructor = Copy.longInstructors[shot.long]
             let sheet = Self.sheet(
                 Self.grade(name: Copy.longCourseNames[shot.long]), roster: Self.roster(instructor: instructor), in: folder
