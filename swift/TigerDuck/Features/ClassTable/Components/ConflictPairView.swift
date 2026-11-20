@@ -5,10 +5,10 @@ struct ConflictPairView: View {
     let cluster: ConflictCluster
     let diffWithoutColor: Bool
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppPreferences.self) private var preferences
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
-    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
+    private var policy: VisualStylePolicy { preferences.visualStylePolicy }
 
     private var courseA: CourseStore.Course { cluster.segments[0].course }
     private var spanA: Int { cluster.segments[0].span }
@@ -99,8 +99,10 @@ struct ConflictPairView: View {
                             AppConstants.Periods.shortWeekdayLabel(cluster.weekday),
                             cluster.periodLabel,
                             [courseA, courseB].map {
-                                spokenCourse($0, hasAssignment: cluster.showsBadge(for: $0),
-                                             ignoresAssignments: cluster.showsIgnoredMark(for: $0))
+                                spokenCourse(
+                                    $0, isAssessment: cluster.assessed.contains($0.courseNo),
+                                    hasAssignment: cluster.showsBadge(for: $0), ignoresAssignments: cluster.showsIgnoredMark(for: $0)
+                                )
                             }
                             .joined(separator: ", ")))
             )
@@ -125,7 +127,7 @@ struct ConflictPairView: View {
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
                 policy.classTableCourseFill(course.color)
-                Text(course.displayName)
+                Text.courseName(course.displayName, isAssessment: cluster.assessed.contains(course.courseNo))
                     .font(.system(size: cluster.metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
                     .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(2)

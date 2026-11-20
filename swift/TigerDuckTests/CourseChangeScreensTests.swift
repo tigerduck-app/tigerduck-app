@@ -30,10 +30,18 @@ struct CourseChangeScreensTests {
             SDCourse(courseNo: "CS3002301", courseName: "計算機網路", classroom: "IB-201", schedule: [2: ["6", "7"]], semester: term),
             SDCourse(courseNo: "GE3005301", courseName: longName, classroom: "RB-105", schedule: [4: ["3", "4"]], semester: term),
             SDCourse(courseNo: "EE3004301", courseName: "電子學", classroom: "EE-404", schedule: [5: ["6", "7"]], semester: term),
+            SDCourse(courseNo: "CS3007301", courseName: "編譯器", classroom: "TR-411", schedule: [3: ["6", "7"]], semester: term),
+            SDCourse(courseNo: "CS3008301", courseName: "資料庫", classroom: "TR-412", schedule: [3: ["7", "8"]], semester: term),
+            SDCourse(courseNo: "EE3009301", courseName: "訊號與系統", classroom: "EE-101", schedule: [4: ["7", "8"]], semester: term),
+            SDCourse(courseNo: "EE3010301", courseName: "控制工程", classroom: "EE-102", schedule: [4: ["8", "9"]], semester: term),
+            SDCourse(courseNo: "EE3011301", courseName: "通訊原理", classroom: "EE-103", schedule: [4: ["7", "8", "9"]], semester: term),
         ]
     }
 
-    @Test("this week's class table underlines an assessment but not a cancelled one, and shows an online class in its room's place", arguments: looks)
+    @Test(
+        "this week's class table underlines an assessment, in a conflict too, but not a cancelled one, and shows an online class in its room's place",
+        arguments: looks
+    )
     func classTable(look: Look) async throws {
         try await withExclusiveRealDefaults {
             try await withAccessibilityAutomation {
@@ -61,6 +69,8 @@ struct CourseChangeScreensTests {
                     CourseChangesTests.row(3, "assessment", course: "GE3005301", days: day(4), values: Self.exam),
                     CourseChangesTests.row(4, "assessment", course: "EE3004301", days: day(5), values: Self.exam),
                     CourseChangesTests.row(5, "cancelled", course: "EE3004301", days: day(5)),
+                    CourseChangesTests.row(6, "assessment", course: "CS3007301", days: day(3), values: Self.exam),
+                    CourseChangesTests.row(7, "assessment", course: "EE3009301", days: day(4), values: Self.exam),
                 ])
                 for course in Self.courses(term) { store.apply(.addByHand(course, semester: term), for: testSignIn) }
                 SchoolAccountKeys.pickSemester(term, for: signIn)
@@ -85,6 +95,10 @@ struct CourseChangeScreensTests {
                 #expect(labels.contains { $0.contains("計算機網路, \(String(localized: "course_change_online"))") })
                 let cancelled = try #require(labels.first { $0.contains("電子學") })
                 #expect(cancelled.contains(String(localized: "course_card_cancelled")) && !cancelled.contains(assessment))
+                let pair = try #require(labels.first { $0.contains("編譯器") })
+                #expect(pair.contains("編譯器, \(assessment)") && pair.contains("資料庫") && !pair.contains("資料庫, \(assessment)"))
+                #expect(labels.contains { $0.contains("訊號與系統, \(assessment)") })
+                #expect(!labels.contains { $0.contains("控制工程, \(assessment)") || $0.contains("通訊原理, \(assessment)") })
             }
         }
     }

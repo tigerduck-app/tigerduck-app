@@ -607,6 +607,23 @@ struct CourseChangesTests {
         #expect(try key([note]) != key([note, Self.row(2, "assessment", periods: ["2"], values: Self.midterm)]))
     }
 
+    @Test func aConflictCellIsRedrawnWhenOneOfItsClassesBecomesAnAssessment() {
+        let other = SDCourse(courseNo: "CC901", courseName: "Parsing", classroom: "T4-502", schedule: [4: ["3", "4"]])
+        let pair = ClassTableGrid.CellRole.conflictStart(
+            courseA: Self.course(), spanA: 3, offsetA: 0, courseB: other, spanB: 2, offsetB: 1, combinedSpan: 3
+        )
+        let lanes = ClassTableGrid.CellRole.conflictMany(
+            segments: [ClassTableConflictSegment(course: other, key: "CC901", span: 2, offset: 1, lane: 0)],
+            combinedSpan: 3, laneCount: 3
+        )
+        for role in [pair, lanes] {
+            func key(_ assessed: Set<String>) -> String {
+                TimetableCellTransitionID.of(role, weekday: 4, periodId: "2", meeting: nil, assessed: assessed, showsRooms: true)
+            }
+            #expect(key([]) != key(["CC901"]))
+        }
+    }
+
     @Test func aClassTableCellReadsTheAssessmentRightAfterTheCourseName() {
         let course = Self.course()
         let online = String(localized: "course_change_online")

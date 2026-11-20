@@ -50,7 +50,6 @@ extension Color {
     static let badgeRedText = adaptive(light: Color(hex: 0xD70015), dark: Color(hex: 0xFF7A72))
     /// A value the school changed for one day, such as a moved room or a new start time.
     static let changeInk = adaptive(light: Color(hex: 0x7C2D12), dark: Color(hex: 0xFDBA74))
-    /// The dashed underline of a class with an assessment, such as a midterm.
     static let assessmentInk = adaptive(light: Color(hex: UInt(AssessmentInk.light)), dark: Color(hex: UInt(AssessmentInk.dark)))
     static let rowBand = Color.primary.opacity(0.08)
     static let rowBandAlternate = Color.primary.opacity(0.04)
@@ -88,7 +87,6 @@ extension Text {
         courseName(name, assessmentInk: isAssessment ? .assessmentInk : nil)
     }
 
-    /// A room the school changed for one day, or `course_change_online` for an online class.
     static func changedRoom(_ room: String) -> Text {
         Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(room).fontWeight(.semibold))")
             .foregroundStyle(Color.changeInk)

@@ -14,11 +14,6 @@ struct MacClassTableCourseCell: View {
         viewModel.currentSemester == SchoolTerms.current
     }
 
-    static func spokenName(_ course: CourseStore.Course, ignoresAssignments: Bool) -> String {
-        guard ignoresAssignments else { return course.displayName }
-        return course.displayName + ", " + String(localized: "a11y_class_table_cell_assignments_ignored")
-    }
-
     private static let ignoredMarkSize: CGFloat = 11
 
     var body: some View {
