@@ -2,34 +2,28 @@ import SwiftUI
 import TigerDuckCore
 
 struct ScoreCourseDetailSheet: View {
-    @Environment(AppEnvironment.self) private var app
-
     let course: CourseGrade
+    let policy: VisualStylePolicy
+    var courses: CourseStore = .shared
 
     @State private var rosterCourse: CourseRoster?
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
-                    headerCard
-
-                    if let rosterCourse {
-                        rosterSection(rosterCourse)
-                    } else {
-                        unavailableCard
-                    }
-
-                    if !course.remark.isEmpty {
-                        remarkSection
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
+                headerCard
+                infoRows
+                if rosterCourse == nil {
+                    unavailableCard
                 }
-                .padding(.vertical, TigerDuckTheme.Spacing.lg)
+                if !course.remark.isEmpty {
+                    remarkSection
+                }
             }
-            .background(Color.backgroundPrimary)
-            .navigationTitle(course.name)
-            .navigationBarTitleDisplayMode(.inline)
+            .padding(.top, TigerDuckTheme.Spacing.xl)
+            .padding(.bottom, TigerDuckTheme.Spacing.lg)
         }
+        .background(Color.backgroundPrimary)
         .onAppear(perform: resolveRosterCourse)
     }
 
@@ -39,10 +33,7 @@ struct ScoreCourseDetailSheet: View {
                 Text(course.name)
                     .font(TigerDuckTheme.Typography.title)
                     .foregroundStyle(Color.textPrimary)
-                Text(course.code)
-                    .font(TigerDuckTheme.Typography.caption.monospaced())
-                    .foregroundStyle(Color.textSecondary)
-                Text(String(format: String(localized: "score_course_credits_meta"), displayTerm, (course.credits ?? 0).creditsText))
+                Text(displayTerm)
                     .font(TigerDuckTheme.Typography.caption)
                     .foregroundStyle(Color.textSecondary)
             }
@@ -54,29 +45,37 @@ struct ScoreCourseDetailSheet: View {
                 .foregroundStyle(gradeColor)
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: app.preferences.visualStylePolicy)
+        .presetCard(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
-    @ViewBuilder
-    private func rosterSection(_ roster: CourseRoster) -> some View {
+    private var infoRows: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.md) {
-            if !roster.instructor.isEmpty {
-                DetailInfoRow(label: String(localized: "course_detail_instructor_label"), value: roster.instructor)
-            }
-            if roster.maxCount > 0 {
+            if let rosterCourse {
                 DetailInfoRow(
-                    label: String(localized: "score_course_detail_enrollment_label"),
-                    value: "\(roster.enrolledCount) / \(roster.maxCount)"
+                    label: String(localized: "course_detail_instructor_label"),
+                    value: rosterCourse.instructor.isEmpty ? "—" : rosterCourse.instructor
                 )
             }
-            let classroomText = roster.classroom
-            if !classroomText.isEmpty {
-                DetailInfoRow(label: String(localized: "course_detail_classroom_label"), value: classroomText)
-            }
-            let scheduleCode = formatScheduleCode(roster.schedule)
-            if !scheduleCode.isEmpty {
-                DetailInfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
+            DetailInfoRow(label: String(localized: "course_detail_code_label"), value: course.code)
+            DetailInfoRow(
+                label: String(localized: "course_detail_credits_label"), value: course.credits.map(\.creditsText) ?? "—"
+            )
+            if let rosterCourse {
+                if rosterCourse.maxCount > 0 {
+                    DetailInfoRow(
+                        label: String(localized: "score_course_detail_enrollment_label"),
+                        value: "\(rosterCourse.enrolledCount) / \(rosterCourse.maxCount)"
+                    )
+                }
+                DetailInfoRow(
+                    label: String(localized: "course_detail_location_label"),
+                    value: rosterCourse.classroom.isEmpty ? "—" : rosterCourse.classroom
+                )
+                let scheduleCode = formatScheduleCode(rosterCourse.schedule)
+                if !scheduleCode.isEmpty {
+                    DetailInfoRow(label: String(localized: "score_course_detail_schedule_label"), value: scheduleCode)
+                }
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
@@ -92,7 +91,7 @@ struct ScoreCourseDetailSheet: View {
             Spacer()
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: app.preferences.visualStylePolicy)
+        .presetCard(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 
@@ -105,14 +104,14 @@ struct ScoreCourseDetailSheet: View {
                 .foregroundStyle(Color.textPrimary)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(TigerDuckTheme.Spacing.md)
-                .presetCard(policy: app.preferences.visualStylePolicy)
+                .presetCard(policy: policy)
                 .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         }
     }
 
     private func resolveRosterCourse() {
         guard rosterCourse == nil else { return }
-        rosterCourse = CourseRoster.find(courseNo: course.code, term: course.term)
+        rosterCourse = CourseRoster.find(courseNo: course.code, term: course.term, in: courses)
     }
 
     /// Day-code mapping aligned with `CourseLookupService.parseNodeToSchedule`:
