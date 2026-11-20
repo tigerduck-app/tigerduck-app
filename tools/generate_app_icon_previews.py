@@ -45,7 +45,12 @@ def imageset(icons: Path, name: str) -> Path:
 
 
 def documents(icons: Path) -> dict[str, Path]:
-    return {p.stem: p for p in sorted(icons.rglob("*.icon"))}
+    found: dict[str, Path] = {}
+    for path in sorted(icons.rglob("*.icon")):
+        if path.stem in found:
+            sys.exit(f"error: {found[path.stem]} and {path} share the asset name {path.stem}")
+        found[path.stem] = path
+    return found
 
 
 def digest(document: Path) -> str:

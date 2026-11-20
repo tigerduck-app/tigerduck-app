@@ -60,6 +60,11 @@ class CheckTests(unittest.TestCase):
         self.document("Seasonal/Tiger")
         self.assertEqual(self.problems(), ["Tiger: no previews"])
 
+    def test_two_documents_with_one_name_fail(self):
+        self.document("Seasonal/Duck")
+        with self.assertRaisesRegex(SystemExit, "share the asset name Duck"):
+            self.problems()
+
     def test_a_missing_dark_preview_fails(self):
         (previews.imageset(self.icons, "Duck") / "Duck-dark.png").unlink()
         self.assertEqual(self.problems(), ["Duck: no previews"])
