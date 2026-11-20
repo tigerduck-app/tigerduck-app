@@ -45,6 +45,22 @@ struct SettingsSnapshotTests {
         }
     }
 
+    @Test("the Library page, whose flip switch has a two-line footer", arguments: ClubScreensTests.looks, widths)
+    func libraryFooter(look: ClubScreensTests.Look, width: CGFloat) async throws {
+        try await withAccessibilityAutomation {
+            let preferences = AppPreferences()
+            let (window, host) = try Screen.show(
+                PageSettings.library.view, state: Self.state(preferences), preferences: preferences,
+                width: width, height: 874, style: look.style
+            )
+            defer { window.isHidden = true }
+            window.traitOverrides.preferredContentSizeCategory = look.textSize
+            let note = String(localized: "settings_flip_to_library_closed_note")
+            try await waitUntil { Screen.shows(note, in: host) }
+            try await Self.saveEveryScreen(of: window, as: "library-\(look.testDescription)-\(Int(width))")
+        }
+    }
+
     @Test("a search with results", arguments: widths)
     func search(width: CGFloat) async throws {
         try await withAccessibilityAutomation {

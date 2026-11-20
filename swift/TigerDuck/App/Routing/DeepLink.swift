@@ -14,6 +14,8 @@ struct ServerPopupPayload: Equatable, Identifiable {
 }
 
 extension DeepLink {
+    static let assignmentReminderKind = "assignment_reminder"
+
     static func bulletinLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {
         switch userInfo["kind"] as? String {
         case "custom_push_bulletin", "bulletin":
@@ -27,9 +29,15 @@ extension DeepLink {
         from userInfo: [AnyHashable: Any],
         in assignments: [SDAssignment]
     ) -> SDAssignment? {
-        guard userInfo["kind"] as? String == "assignment_reminder",
+        guard userInfo["kind"] as? String == assignmentReminderKind,
               let id = pushInteger(from: userInfo["moodle_assignment_id"]) else { return nil }
         return assignments.first { $0.assignmentId == String(id) }
+    }
+
+    static func reminderDue(from userInfo: [AnyHashable: Any]) -> Date? {
+        guard userInfo["kind"] as? String == assignmentReminderKind,
+              let epoch = pushInteger(from: userInfo["due_epoch"]) else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(epoch))
     }
 
     static func schoolMailLink(from userInfo: [AnyHashable: Any]) -> DeepLink? {

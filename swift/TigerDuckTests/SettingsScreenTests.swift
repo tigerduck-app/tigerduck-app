@@ -199,6 +199,32 @@ struct SettingsScreenTests {
         }
     }
 
+    @Test("the flip switch's footer says what a flip does and, under it, that a flip while the library is closed does nothing",
+          arguments: [true, false])
+    func theFlipFooterHasTheClosedNote(hasFlip: Bool) async throws {
+        try await withAccessibilityAutomation {
+            var state = Screen.allOpenButSchool(AppPreferences())
+            state.hasFlipToLibrary = hasFlip
+            let (window, host) = try Screen.show(PageSettings.library.view, state: state)
+            defer { window.isHidden = true }
+            let summary = String(localized: "settings_flip_to_library_summary")
+            let note = String(localized: "settings_flip_to_library_closed_note")
+            try await waitUntil {
+                Screen.shows(SettingsRow.librarySignOut.label, in: host)
+                    && Screen.shows(SettingsRow.flipToLibrary.label, in: host) == hasFlip
+                    && Screen.shows(note, in: host) == hasFlip
+            }
+
+            #expect(Screen.shows(summary, in: host) == hasFlip)
+            #expect(Screen.shows(note, in: host) == hasFlip)
+            guard hasFlip else { return }
+            let lines = Screen.elements(in: host)
+            let summaryFrame = try #require(lines.first { $0.accessibilityLabel == summary }).accessibilityFrame
+            let noteFrame = try #require(lines.first { $0.accessibilityLabel == note }).accessibilityFrame
+            #expect(noteFrame.minY >= summaryFrame.maxY)
+        }
+    }
+
     @Test("a search result opens the page that holds the row", arguments: PageSettings.allCases)
     func aResultOpensItsPage(page: PageSettings) async throws {
         try await withAccessibilityAutomation {

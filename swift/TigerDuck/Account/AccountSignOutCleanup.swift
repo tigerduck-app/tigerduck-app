@@ -1,7 +1,6 @@
 import Foundation
 #if os(iOS)
 import SafariServices
-import UserNotifications
 #endif
 
 enum AccountSignOutCleanup {
@@ -47,7 +46,7 @@ enum AccountSignOutCleanup {
 
     #if os(iOS)
     static func removeAccountNotifications(from center: any DeliveredNotificationCenter) async {
-        let identifiers = await center.deliveredNotificationThreads()
+        let identifiers = await center.deliveredNotificationDetails()
             .filter { $0.thread != MailConstants.notificationThread }
             .map(\.identifier)
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
@@ -55,16 +54,3 @@ enum AccountSignOutCleanup {
     #endif
 }
 
-#if os(iOS)
-@MainActor
-protocol DeliveredNotificationCenter {
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)]
-    func removeDeliveredNotifications(withIdentifiers identifiers: [String])
-}
-
-extension UNUserNotificationCenter: DeliveredNotificationCenter {
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
-        await deliveredNotifications().map { ($0.request.identifier, $0.request.content.threadIdentifier) }
-    }
-}
-#endif

@@ -18,7 +18,10 @@ struct LibrarySettingsView: View {
                     )
                     .settingsRow(.flipToLibrary)
                 } footer: {
-                    Text(String(localized: "settings_flip_to_library_summary"))
+                    VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.xs) {
+                        Text(String(localized: "settings_flip_to_library_summary"))
+                        Text(String(localized: "settings_flip_to_library_closed_note"))
+                    }
                 }
             }
             LibrarySignOutSection()
