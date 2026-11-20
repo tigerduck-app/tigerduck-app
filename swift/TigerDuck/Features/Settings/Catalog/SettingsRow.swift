@@ -7,7 +7,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case tigerSync
     case notificationPermissions
     case language
-    case apiEndpoint, storage
+    case appIcon, apiEndpoint, storage
     case version, checkForUpdates, serverStatus, whatsNew, website, aboutOthers
     case showFullDueDate, invertSlider, assignmentReminders, liveActivity
     case classTableList, pinTodayCourses, showClassroom, outlineRequiredCourses, showAllPeriods, courseNameSize, classReminders
@@ -37,6 +37,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .tigerSync: "cloud_sync_title"
         case .notificationPermissions: "notification_permission_settings_nav_title"
         case .language: "settings_language"
+        case .appIcon: "settings_app_icon"
         case .apiEndpoint: "settings_api_endpoint"
         case .storage, .mailStorage, .websiteData, .moodleStorage: "settings_storage_title"
         case .version: "settings_version"

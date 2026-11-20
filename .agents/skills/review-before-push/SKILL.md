@@ -65,6 +65,10 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
 - A CI job, checker or script change is tried against its bypasses: a renamed or commented-out
   target, a non-ASCII path, a docs-only commit pushed after a code commit. A new macOS job uses
   the Xcode the phone job uses, checked against the runner image's README.
+- No checker failure is "already on dev": run `tools/localization/check_keys.py` and the other
+  `check_*.py` scripts on the branch, and fix what they report. A `LocalizedStringResource`
+  property named like an argument label (`title`, `label`) makes `check_keys.py` read every
+  literal passed with that label as a key; name it `titleKey`.
 
 ## 6. Security
 

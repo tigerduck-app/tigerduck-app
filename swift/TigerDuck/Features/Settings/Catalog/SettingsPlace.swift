@@ -59,7 +59,7 @@ nonisolated extension SettingsRow {
         case .tigerSync: .section(.tigerSync)
         case .notificationPermissions: .section(.notificationPermissions)
         case .language: .section(.language)
-        case .apiEndpoint, .storage: .section(.other)
+        case .appIcon, .apiEndpoint, .storage: .section(.other)
         case .version, .checkForUpdates, .serverStatus, .whatsNew, .website, .aboutOthers: .section(.about)
         case .showFullDueDate, .invertSlider, .assignmentReminders, .liveActivity: .page(.home)
         case .classTableList, .pinTodayCourses, .showClassroom, .outlineRequiredCourses, .showAllPeriods,

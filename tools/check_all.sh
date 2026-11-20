@@ -18,5 +18,6 @@ run python3 tools/check_macos_sources.py
 run python3 tools/check_privacy_manifests.py
 run python3 tools/localization/check_keys.py
 run python3 tools/generate_licenses.py --check
+run python3 tools/generate_app_icon_previews.py --check
 run python3 -m unittest discover -s tools -p 'test_*.py'
 echo "All checks passed."

@@ -41,7 +41,7 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
         case .importClassTable: String(localized: "class_table_import")
         case .person(_, let nickname, _): nickname
         case .user(let name, _): name
-        case .others: String(localized: ImportedPerson.Placement.other.title)
+        case .others: String(localized: ImportedPerson.Placement.other.titleKey)
         }
     }
 
@@ -67,7 +67,7 @@ enum ClassTableSwitcherEntry: Equatable, Identifiable {
 }
 
 extension ImportedPerson.Placement {
-    var title: LocalizedStringResource {
+    var titleKey: LocalizedStringResource {
         switch self {
         case .rotation: "class_table_list_section_double_tap"
         case .longPressMenu: "class_table_list_section_long_press"
