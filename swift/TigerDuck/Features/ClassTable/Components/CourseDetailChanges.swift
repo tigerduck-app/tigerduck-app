@@ -71,9 +71,9 @@ struct CourseDetailChanges: View {
                 parts.append((text: TimeRange.text(start, end), spoken: TimeRange.spoken(start, end)))
             }
         }
-        let held = meetings.filter { !$0.isCancelled }
+        let held = meetings.filter { !$0.isCancelled }.flatMap(\.changes)
         var shownIds = Set<Int>()
-        parts += (held.compactMap(\.assessment) + held.compactMap(\.online) + meetings.flatMap(\.notes))
+        parts += (held.filter { $0.kind == .assessment } + held.filter { $0.kind == .online } + meetings.flatMap(\.notes))
             .filter { shownIds.insert($0.id).inserted }
             .compactMap(\.listedText).map { (text: $0, spoken: $0) }
         var seen = Set<String>()
