@@ -45,7 +45,7 @@ def imageset(icons: Path, name: str) -> Path:
 
 
 def documents(icons: Path) -> dict[str, Path]:
-    return {p.stem: p for p in sorted(icons.glob("*.icon"))}
+    return {p.stem: p for p in sorted(icons.rglob("*.icon"))}
 
 
 def digest(document: Path) -> str:
