@@ -59,6 +59,7 @@ jobs:
               TigerDuckTests/MailMessageViewModelTests/theWebViewIsLockedDown()
               TigerDuckTests/MailReadableHTMLTests/theLinkColourIsWebKitsOwn(theme:)
               TigerDuckTests/AccentGradientScreenTests
+              TigerDuckTests/AppIconSettingsScreenTests
               TigerDuckTests/ArchiveScreensTests
               TigerDuckTests/MailSendHoldScreenTests
               TigerDuckTests/BrowserAddressSheetTests

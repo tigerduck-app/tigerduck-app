@@ -1,3 +1,4 @@
+import Defaults
 import SwiftUI
 import UserNotifications
 
@@ -21,6 +22,7 @@ struct SettingsList: View {
     @State private var revealed: SettingsRow?
     @State private var notificationsAuthorized = true
     @State private var storageBytes: Int?
+    @Default(.appIcon) private var appIcon
 
     init(sheets: SettingsSheetState, query: String = "") {
         self.sheets = sheets
@@ -112,6 +114,12 @@ struct SettingsList: View {
 
     private var otherSection: some View {
         Section(String(localized: "settings_section_other_settings")) {
+            NavigationLink {
+                AppIconSettingsView()
+            } label: {
+                LabeledContent(SettingsRow.appIcon.label, value: String(localized: AppIcon.titleKey(of: appIcon)))
+            }
+            .settingsRow(.appIcon)
             NavigationLink(SettingsRow.apiEndpoint.label) {
                 DebugEndpointView()
             }
