@@ -18,7 +18,6 @@ struct UndatedAssignmentRowScreenTests {
         )
     }
 
-    /// Home's card rows, each a button as in Home's list.
     private static func list(_ assignments: [SDAssignment]) -> some View {
         let course = SDCourse(courseNo: "CS3105301", courseName: "Data Structures")
         return ScrollView {
