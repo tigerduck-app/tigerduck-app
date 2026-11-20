@@ -19,7 +19,6 @@ struct MoodleMembersPinMyselfTests {
         )
     }
 
-    /// The user's student ID sorts between two classmates', so only the pin puts their row first.
     nonisolated static let members = [
         member(5, "Zed Teacher", role: "editingteacher"),
         member(6, "Amy Teacher", role: "editingteacher"),
@@ -93,8 +92,6 @@ struct MoodleMembersPinMyselfTests {
 struct MoodleMembersPinMyselfScreenTests {
     typealias Menu = PageMenuScreenTests
 
-    /// The user's student ID sorts last, so the toggle moves their row between the first and the
-    /// last place of the section, the two places whose row spacing differs.
     private nonisolated static let members = [
         MoodleMembersPinMyselfTests.member(5, "Zed Teacher", role: "editingteacher"),
         MoodleMembersPinMyselfTests.member(6, "Amy Teacher", role: "editingteacher"),
@@ -124,8 +121,6 @@ struct MoodleMembersPinMyselfScreenTests {
         )
     }
 
-    /// The members list at 375 points, tall enough that the largest text size scrolls nothing,
-    /// once the user's row is where `pinsMyself` puts it.
     private static func showList(look: Menu.Look, pinsMyself: Bool, root: URL) async throws -> UIWindow {
         Defaults[.pinMyselfInCourseMembers] = pinsMyself
         let store = store(root: root)
@@ -154,8 +149,8 @@ struct MoodleMembersPinMyselfScreenTests {
             .appendingPathComponent("MoodleMembersPinMyselfScreenTests-\(UUID().uuidString)", isDirectory: true)
     }
 
-    /// One tap per window: a closed menu's items stay in the window's accessibility tree, so the
-    /// second open of `PageMenuScreenTests.openMenu` would find no new item.
+    /// A closed menu's items stay in the window's accessibility tree, where a second open would
+    /// take them for the page's own.
     @Test("the members screen's ⋯ has the toggle, which shows its state and reorders the open list at once",
           arguments: [Menu.Look.all[0], Menu.Look.all[1], Menu.Look.all[2]], [true, false])
     func theMenuTogglesThePin(look: Menu.Look, startsOn: Bool) async throws {
@@ -188,10 +183,8 @@ struct MoodleMembersPinMyselfScreenTests {
         }
     }
 
-    /// After rows move, a List sizes a row that stayed only a frame later, so a member's spacing
-    /// that depends on their place shows wrong for that frame. Whether a picture lands in it varies,
-    /// so the user's row moves back and forth, and each frame of the first half second after a move
-    /// is compared with the list that move settles on.
+    /// After rows move, a List sizes a row that stayed only a frame later, and whether a picture
+    /// lands in that frame varies from run to run.
     @Test("a row that moves to or from the end of its section is spaced as the settled list from the first frame",
           arguments: [Menu.Look.all[0], Menu.Look.all[2]])
     func theMovedRowsSpacingHolds(look: Menu.Look) async throws {
@@ -209,8 +202,7 @@ struct MoodleMembersPinMyselfScreenTests {
                     try await waitUntil { Self.myRowLeads(in: window) == pinsMyself }
                 }
 
-                // The first two moves go unchecked: on a busy runner, the rest of a screen that just
-                // appeared can still be settling.
+                // On a busy runner a screen that just appeared can still be settling.
                 for pinsMyself in [false, true] {
                     try await move(pinsMyself: pinsMyself)
                     try await Task.sleep(for: .seconds(1))
