@@ -126,7 +126,7 @@ private struct CachedAssignment: Codable {
     let courseNo: String
     let courseName: String
     let title: String
-    let dueDate: Date
+    let dueDate: Date?
     let isCompleted: Bool
     let moodleUrl: String?
     let cutoffDate: Date?
@@ -156,7 +156,8 @@ private struct CachedAssignment: Codable {
             courseNo: courseNo,
             courseName: courseName,
             title: title,
-            dueDate: originalDueDate ?? dueDate,
+            // Without originalDueDate, dueDate is Moodle's own date unless an extension set it.
+            dueDate: originalDueDate ?? (extensionDueDate == nil ? dueDate : nil),
             isCompleted: isCompleted,
             moodleUrl: moodleUrl,
             cutoffDate: cutoffDate,

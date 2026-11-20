@@ -87,6 +87,7 @@ jobs:
               TigerDuckTests/CourseSyllabusPageTests
               TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/ForwardPagingLockTests
+              TigerDuckTests/HomeAssignmentFilterSwitchTests
               TigerDuckTests/HomeEditPageTests
               TigerDuckTests/HomeScrollAnchorTests
               TigerDuckTests/InformationSystemPageTests
@@ -126,6 +127,7 @@ jobs:
               TigerDuckTests/TimeSliderAccessibilityTests
               TigerDuckTests/TLSPinPromptTests
               TigerDuckTests/TodayCourseCardLayoutTests
+              TigerDuckTests/UndatedAssignmentRowScreenTests
               TigerDuckTests/WhatsNewPagerTests
               TigerDuckTests/WidgetLayoutTests
               TigerDuckTests/WidgetSnapshotPictureTests

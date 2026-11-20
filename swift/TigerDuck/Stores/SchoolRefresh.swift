@@ -29,7 +29,7 @@ enum SchoolRefresh {
     }
 
     static func moodleEvents(authService: AuthService, for signIn: SignIn) async -> [SDCalendarEvent] {
-        await assignments(authService: authService, for: signIn).map(AssignmentRecords.moodleCalendarEvent)
+        await assignments(authService: authService, for: signIn).compactMap(AssignmentRecords.moodleCalendarEvent)
     }
 
     /// The school calendar's events; nil when the fetch fails.
