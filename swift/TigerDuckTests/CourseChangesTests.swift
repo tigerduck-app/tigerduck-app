@@ -588,6 +588,23 @@ struct CourseChangesTests {
         #expect(try key([note]) != key([note, Self.row(2, "assessment", periods: ["2"], values: Self.midterm)]))
     }
 
+    @Test func anAssessmentOrOnlineClassOnOnlyCancelledPeriodsLeavesTheHeldPeriodsUnmarked() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["4"]),
+            Self.row(3, "cancelled", periods: ["4"]),
+            Self.row(4, "assessment", periods: ["7", "8"], values: Self.midterm),
+            Self.row(5, "cancelled", periods: ["8"]),
+        ])
+        let morning = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        let afternoon = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["7", "8"], on: Self.thursday, changes: changes))
+
+        #expect(!morning.isCancelled && morning.assessment == nil && morning.online == nil)
+        #expect(morning.room == "T4-501" && !morning.hasChangedRoom)
+        #expect(afternoon.assessment?.id == 4)
+        #expect(Self.slots(changes).map(\.room) == ["T4-501", "T4-501", "T4-501", "T4-501"])
+    }
+
     @Test func aConflictCellIsRedrawnWhenOneOfItsClassesBecomesAnAssessment() {
         let other = SDCourse(courseNo: "CC901", courseName: "Parsing", classroom: "T4-502", schedule: [4: ["3", "4"]])
         let pair = ClassTableGrid.CellRole.conflictStart(

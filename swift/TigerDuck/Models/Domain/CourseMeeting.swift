@@ -82,6 +82,8 @@ struct CourseMeeting {
                 end = timetableEnd
                 applied.removeAll(where: \.isMeetingWide)
             }
+            let held = run.filter { period in !applied.contains { $0.kind == .cancelled && $0.covers(period) } }
+            applied.removeAll { [.assessment, .online].contains($0.kind) && !held.contains(where: $0.covers) }
             return CourseMeeting(
                 course: course, date: date, dayKey: dayKey, periods: run, start: start, end: end,
                 timetableStart: timetableStart, timetableEnd: timetableEnd, changes: applied
