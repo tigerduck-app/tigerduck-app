@@ -11,9 +11,8 @@ nonisolated enum NTUSTDepartment: String {
     case fn = "18", eo = "19", tm = "20", ma = "21", en = "22", be = "23", pa = "24", ci = "25"
     case ic = "27", hc = "30", ce = "31", ec = "32", mb = "33", gd = "37"
     case si = "51", ai = "52", es = "53", `as` = "54"
-    // No 34 or 35: a 2019 list of the codes gives 34 to the English-taught program for foreign
-    // students, yet the students in its TE courses have 35 in their IDs
-    // (https://www.ptt.cc/bbs/NTUST_Talk/M.1569231954.A.B44.html).
+    // No 34 or 35: a 2019 student list gives 34 to the English-taught program for foreign
+    // students, yet the students in its TE courses have 35 in their IDs.
 
     init?(studentId: String?) {
         guard let match = studentId?.wholeMatch(of: /[BbMmDd][0-9]{3}([0-9]{2})[0-9]{3}/) else { return nil }
