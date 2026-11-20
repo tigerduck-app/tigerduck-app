@@ -313,17 +313,17 @@ The backend deploys first at each step; see Migration Plan.
 
 ## Migration Plan
 
-1. Backend PR 1, released as backend 4.6.0: D2's column and field, D5, D9 with the mode. Deploy
+1. Backend PR 1, released as backend 4.7.0: D2's column and field, D5, D9 with the mode. Deploy
    with backup and checks; set the mode to `shadow`. Size M.
 2. Shadow for the period O9 sets; fix every `app_only` and time difference. Size S per fix.
 3. iOS PR: D2's report and D11's iOS part, and What's New per O4. Size M.
-4. Backend PR 2, released as backend 4.7.0: D6 to D8, D10, D11 step 1. Deploy before iOS 4.0.0 is
+4. Backend PR 2, released as backend 4.8.0: D6 to D8, D10, D11 step 1. Deploy before iOS 4.0.0 is
    released and set the mode to `live`; it serves nothing until a device reports a profile. Size M.
 5. iOS 4.0.0 release.
 6. Parallel run per O7, then the owner sets `class_reminders_skip_profile_devices`. Size S.
 7. Backend PR 3 at O8's date: D11 step 2. Size S to M.
 
-Version numbers are as of today. Rollback: mode `shadow` stops the scan and gives class events
+Version numbers are as of today: backend 4.6.0 is the assignment reminder release (tigerduck-backend #271). Rollback: mode `shadow` stops the scan and gives class events
 back to every device's upload, and D8 cancels pending server starts as `not_served`; the reminder
 gate stops applying. The column stays.
 

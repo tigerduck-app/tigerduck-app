@@ -5,7 +5,7 @@ Backend pull requests go to tigerduck-backend `dev` and run their tests on xs-ma
 invented courses and fakes; none reach the school, Moodle, APNs or production. Each group waits
 for the owner's decisions it names.
 
-## 1. Backend PR 1: meetings, device profile, shadow comparison (backend 4.6.0)
+## 1. Backend PR 1: meetings, device profile, shadow comparison (backend 4.7.0)
 
 - [ ] 1.1 Move `class_meetings`, `changed_meeting`, `PERIOD_RANK`, the schedule parsing and the
   per-day term and quiet-day rules out of `server/push/course_reminders.py` into one module that
@@ -29,9 +29,9 @@ for the owner's decisions it names.
   difference, a device with no profile and `sync_live_activity` off, and mode `off` comparing
   nothing; the log line holds no course name or id.
 - [ ] 1.6 Document the module, the profile and the mode in `server/AGENTS.md` and add the
-  4.6.0 `MIGRATE.md` section. Check: the whole `server/tests` passes on xs-mac.
+  4.7.0 `MIGRATE.md` section. Check: the whole `server/tests` passes on xs-mac.
 
-## 2. Backend release 4.6.0 and shadow run
+## 2. Backend release 4.7.0 and shadow run
 
 - [ ] 2.1 Release and deploy with backup, start check and post-check; set
   `TIGERDUCK_CLASS_LIVE_ACTIVITY_MODE=shadow`. Check: the counter moves after an iPhone upload.
@@ -59,7 +59,7 @@ for the owner's decisions it names.
 - [ ] 3.5 Run the touched suites, then the whole phone target and the macOS build on xs-mac.
   Check: the result lines in the PR.
 
-## 4. Backend PR 2: live scan, takeover, check before sending (backend 4.7.0)
+## 4. Backend PR 2: live scan, takeover, check before sending (backend 4.8.0)
 
 - [ ] 4.1 Add the served-device function (D3) and the scan job (D7) with its two settings,
   registered only in mode `live`. Check: tests for a served device filing both scenarios, each
@@ -79,12 +79,12 @@ for the owner's decisions it names.
   Check: tests that with it on and mode `live` a profile device gets no reminder and a released
   app still does, and that mode `shadow` ignores it.
 - [ ] 4.6 Update `server/AGENTS.md` (schedule channel, class starts), `docs/api-v4.md` (who
-  changes a device's pending starts), `docs/push-notification-flows.drawio` and the 4.7.0
+  changes a device's pending starts), `docs/push-notification-flows.drawio` and the 4.8.0
   `MIGRATE.md` section. Check: the whole `server/tests` passes on xs-mac.
 
 ## 5. Releases
 
-- [ ] 5.1 Release and deploy backend 4.7.0 before iOS 4.0.0 goes out and set the mode to
+- [ ] 5.1 Release and deploy backend 4.8.0 before iOS 4.0.0 goes out and set the mode to
   `live`. Check: the post-check passes and no `filed_by` job exists until a device reports a
   profile.
 - [ ] 5.2 Release iOS 4.0.0 (`release-bump`). Check: TestFlight devices report a profile and
