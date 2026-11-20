@@ -212,6 +212,7 @@ struct SettingsScreenTests {
             try await waitUntil {
                 Screen.shows(SettingsRow.librarySignOut.label, in: host)
                     && Screen.shows(SettingsRow.flipToLibrary.label, in: host) == hasFlip
+                    && Screen.shows(note, in: host) == hasFlip
             }
 
             #expect(Screen.shows(summary, in: host) == hasFlip)
