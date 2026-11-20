@@ -53,7 +53,7 @@ final class AppRouter {
             if let link = DeepLink.bulletinLink(from: info) {
                 pendingDeepLink = link
             }
-        case "assignment_reminder":
+        case DeepLink.assignmentReminderKind:
             if let assignment = DeepLink.remindedAssignment(from: info, in: assignments()) {
                 pendingDeepLink = .assignment(assignment.assignmentId)
             }

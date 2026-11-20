@@ -60,7 +60,9 @@ Each rule below has one home; call it instead of writing the rule again.
   in `Support/Clock/`.
 - Deep links and sheets: `App/Routing/AppRouter.swift`.
 - What a launch, a return to the app and a sign-in run, and in which order:
-  `App/SceneActivation.swift`.
+  `App/SceneActivation.swift`. Removing delivered assignment reminders once due, on a return to
+  the app as on each background push, is `App/PushAppDelegate.swift`'s, through
+  `DeliveredNotificationCenter`.
 - Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
 
 ## Anti-patterns
