@@ -89,6 +89,8 @@ a parser of outside input:
 - Comments: run `python3 tools/check_comments.py check --base origin/dev`, then reread each new
   comment. It keeps a reason the code cannot state. Delete a comment that repeats the code,
   tells the history, names an earlier build or cites a path a reader cannot open.
+  A URL in a comment is Apple documentation, an RFC or a GitHub issue or pull request; the
+  checker does not read hosts, so a forum or blog link passes it.
 - `rg` the changed behavior's words in `openspec/`, `docs/` and `MIGRATE.md`, and update stale
   text.
 - A doc, skill or comment names only files, tests, jobs and behavior that exist on the base

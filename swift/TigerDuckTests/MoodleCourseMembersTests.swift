@@ -878,7 +878,7 @@ struct MoodleCourseMembersTests {
 
         #expect(ids("小明") == [1])
         #expect(ids("b199") == [2, 1])
-        #expect(ids(NTUSTDepartment.im.shortName) == [2])
+        #expect(ids(NTUSTDepartment.im.shortName) == [2, 4])
         #expect(ids("tiger") == [3, 2])
         #expect(ids("  ") == [3, 2, 1, 4])
         let fullOnly = NTUSTDepartment.im.name.replacingOccurrences(of: NTUSTDepartment.im.shortName, with: "")
@@ -910,30 +910,35 @@ struct MoodleCourseMembersTests {
             .init(label: "Office", value: .text("TR-412")),
         ])
         #expect(MoodleMemberProfile.rows(of: Self.member(2, "Tiger Teacher")).isEmpty)
-        for id in ["B11399003", "M19915003"] {
+        for id in ["B11399003", "M11399003"] {
             #expect(MoodleMemberProfile.rows(of: Self.member(3, "\(id) @ Duck")) == [
                 .init(label: String(localized: "sign_in_student_id"), value: .text(id)),
             ], "\(id)")
         }
     }
 
-    @Test("a bachelor's student ID names the department of its code, in either case", arguments: [
-        ("01", "im"), ("02", "et"), ("03", "me"), ("04", "tx"), ("05", "ct"), ("06", "ch"),
-        ("07", "ee"), ("08", "ba"), ("10", "dt"), ("13", "ad"), ("15", "cs"), ("30", "hc"),
+    @Test("a bachelor's, master's or doctoral student ID names the department of its code, in either case", arguments: [
+        ("01", "im"), ("02", "et"), ("03", "me"), ("04", "tx"), ("05", "ct"), ("06", "ch"), ("07", "ee"),
+        ("08", "ba"), ("09", "mi"), ("10", "dt"), ("11", "ve"), ("12", "ac"), ("13", "ad"), ("15", "cs"),
+        ("16", "mg"), ("17", "fl"), ("18", "fn"), ("19", "eo"), ("20", "tm"), ("21", "ma"), ("22", "en"),
+        ("23", "be"), ("24", "pa"), ("25", "ci"), ("27", "ic"), ("30", "hc"), ("31", "ce"), ("32", "ec"),
+        ("33", "mb"), ("37", "gd"), ("51", "si"), ("52", "ai"), ("53", "es"), ("54", "as"),
     ])
     func department(code: String, courseCode: String) throws {
         let department = try #require(NTUSTDepartment(studentId: "B199\(code)042"))
 
         #expect("\(department)" == courseCode)
-        #expect(NTUSTDepartment(studentId: "b199\(code)042") == department)
+        for letter in ["b", "M", "m", "D", "d"] {
+            #expect(NTUSTDepartment(studentId: "\(letter)199\(code)042") == department, "\(letter)")
+        }
         let key = "course_member_department_\(courseCode)"
         #expect(department.name == Bundle.main.localizedString(forKey: key, value: nil, table: nil))
         #expect(department.shortName == Bundle.main.localizedString(forKey: key + "_short", value: nil, table: nil))
         #expect(department.name != key)
     }
 
-    @Test("no department for another degree's ID, a code the table lacks, an ID of another form, or none", arguments: [
-        "B19999042", "B19909042", "B19911042", "M19915042", "D19915042", "A19915042",
+    @Test("no department for another kind of ID, a code the table lacks, an ID of another form, or none", arguments: [
+        "B19999042", "M19926042", "B19934042", "M19935042", "D19914042", "B19941042", "A19915042",
         "B1991504", "B199150042", "B19915O42", "B１９９１５０４２", " B19915042", "", nil,
     ] as [String?])
     func noDepartment(studentId: String?) {
@@ -1022,10 +1027,14 @@ extension MoodleCourseMembersTests {
         try await waitUntil { site.pictureCalls.contains(last) }
     }
 
-    @Test("a row tells the student ID and the short name of the department it names, a graduate's only the ID")
+    @Test("a row tells the student ID and the short name of the department it names, and only the ID when it names none")
     func aRowTellsTheDepartmentAfterTheStudentId() async throws {
         try await withAccessibilityAutomation {
-            for (id, value) in [("B19915002", "B19915002, \(NTUSTDepartment.cs.shortName)"), ("M19915002", "M19915002")] {
+            for (id, value) in [
+                ("B19915002", "B19915002, \(NTUSTDepartment.cs.shortName)"),
+                ("M19915002", "M19915002, \(NTUSTDepartment.cs.shortName)"),
+                ("M19935002", "M19935002"),
+            ] {
                 let window = try show(MoodleMemberRow(member: Self.member(43, "\(id) @ Duck Tiger", idNumber: id), picture: nil))
                 defer { window.isHidden = true }
                 let root = try #require(window.rootViewController?.view)
