@@ -53,14 +53,14 @@ struct AssignmentStatusRequestTests {
         #expect(asked.map(\.assignId) == [1, 3, 4])
     }
 
-    @Test("confirmed, undated and no-submission records are left out")
+    @Test("confirmed and no-submission records are left out, and an undated one is asked about")
     func unaskableRecordsAreLeftOut() {
         let noSubmissions = MoodleAssignmentRecord(
             assignId: 3, cmId: 3, courseId: 1, name: "Reading", dueDate: Self.askTime, cutoffDate: nil,
             allowSubmissionsFromDate: nil, intro: "", noSubmissions: true
         )
         let records = [Self.record(1, cutoff: nil), Self.record(2, cutoff: nil, due: nil), noSubmissions]
-        #expect(AssignmentRecords.recordsToAskAbout(records, confirmed: ["1": Self.askTime], closed: [:]).isEmpty)
+        #expect(AssignmentRecords.recordsToAskAbout(records, confirmed: ["1": Self.askTime], closed: [:]).map(\.assignId) == [2])
     }
 
     @Test("only an unsubmitted answer asked for after the cutoff closes an assignment")

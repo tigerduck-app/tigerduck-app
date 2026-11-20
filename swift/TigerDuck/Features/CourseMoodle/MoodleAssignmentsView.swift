@@ -31,18 +31,8 @@ struct MoodleAssignmentsView: View {
     }
 
     static func rows(of entries: [MoodleCourseAssignments.Entry], now: Date) -> [Row] {
-        let ordered = entries.enumerated().map { (order: $0.offset, entry: $0.element) }
-        let isPast = { (entry: MoodleCourseAssignments.Entry) in entry.dueDate.map { $0 < now } ?? false }
-        let toCome = ordered.filter { !isPast($0.entry) }.sorted {
-            let lhs = $0.entry.dueDate ?? .distantFuture, rhs = $1.entry.dueDate ?? .distantFuture
-            return lhs == rhs ? $0.order < $1.order : lhs < rhs
-        }
-        let past = ordered.filter { isPast($0.entry) }.sorted {
-            let lhs = $0.entry.dueDate ?? .distantPast, rhs = $1.entry.dueDate ?? .distantPast
-            return lhs == rhs ? $0.order < $1.order : lhs > rhs
-        }
-        return (toCome + past).map { item in
-            Row(entry: item.entry, status: item.entry.listed.flatMap { shownStatus(of: $0, now: now) })
+        entries.partitionedByDueDate(\.dueDate, title: \.title, now: now).map { entry in
+            Row(entry: entry, status: entry.listed.flatMap { shownStatus(of: $0, now: now) })
         }
     }
 
@@ -84,7 +74,7 @@ private struct MoodleAssignmentRow: View {
         let layout = dynamicTypeSize.rowLayout
         HStack(spacing: TigerDuckTheme.Spacing.md) {
             layout {
-                Text(row.entry.record.name.decodingHTMLEntities())
+                Text(row.entry.title)
                     .font(TigerDuckTheme.Typography.body)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(stacked ? nil : 2)
@@ -96,12 +86,11 @@ private struct MoodleAssignmentRow: View {
                             .font(TigerDuckTheme.Typography.caption.weight(.semibold))
                             .foregroundStyle(status.tint)
                     }
-                    if let due = row.entry.dueDate {
-                        Text(due.absoluteMinuteString)
-                            .font(TigerDuckTheme.Typography.caption)
-                            .monospacedDigit()
-                            .foregroundStyle(Color.textSecondary)
-                    }
+                    Text(row.entry.dueDate?.absoluteMinuteString ?? "—")
+                        .font(TigerDuckTheme.Typography.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(Color.textSecondary)
+                        .accessibilityHidden(row.entry.dueDate == nil)
                 }
                 .fixedSize()
             }
