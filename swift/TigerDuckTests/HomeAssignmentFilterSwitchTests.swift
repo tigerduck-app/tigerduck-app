@@ -12,8 +12,8 @@ struct HomeAssignmentFilterSwitchTests {
         var assignments = HomeAssignmentList()
     }
 
-    /// Home's assignment section as `HomeBrowsePage` and `HomeSectionView` lay it out; both read an
-    /// `AppEnvironment`, which the test host never builds.
+    /// `HomeBrowsePage` and `HomeSectionView` read an `AppEnvironment`, which the test host never
+    /// builds.
     struct Section: View {
         let model: Model
         let policy: VisualStylePolicy

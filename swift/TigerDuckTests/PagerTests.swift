@@ -27,8 +27,8 @@ struct PagerTests {
         }
     }
 
-    /// A layout offered the calendar's grid, at the window's edge, a width a fraction of a point
-    /// over a whole one.
+    /// The calendar's layout offered its grid 375.0004 pt; unrounded page widths drift a page off
+    /// within 2,400 pages.
     struct ManyPages: View {
         @Bindable var pager: Probe
 
