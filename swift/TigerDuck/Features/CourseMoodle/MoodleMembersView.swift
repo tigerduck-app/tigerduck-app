@@ -166,6 +166,7 @@ struct MoodleMembersView: View {
                     // depends on a member's place goes in a row of its own, which stays last.
                     Color.clear
                         .frame(height: TigerDuckTheme.Spacing.xs)
+                        .accessibilityHidden(true)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
                         .listRowInsets(EdgeInsets())
