@@ -114,6 +114,11 @@ struct CalendarMonthSwipeScreenTests {
             return exposedAccessibilityElements(in: window).first { $0.accessibilityLabel?.hasPrefix(date) == true }
         }
 
+        var sundayHeading: CGRect? {
+            let sunday = String(localized: "weekday_sun_short")
+            return exposedAccessibilityElements(in: window).first { $0.accessibilityLabel == sunday }?.accessibilityFrame
+        }
+
         func swipe(_ fraction: CGFloat, over duration: Duration = .milliseconds(250)) async throws {
             window.makeKeyAndVisible()
             let travel = grid.width * fraction
@@ -168,6 +173,7 @@ struct CalendarMonthSwipeScreenTests {
             screen.window.saveSnapshot(as: "\(name)-december")
 
             let grid = screen.grid
+            let sunday = try #require(screen.sundayHeading)
             let start = CGPoint(x: grid.midX + 120, y: grid.midY)
             let middle = CGPoint(x: grid.midX - 60, y: grid.midY)
             let end = CGPoint(x: grid.midX - 120, y: grid.midY)
@@ -177,6 +183,7 @@ struct CalendarMonthSwipeScreenTests {
             try await finger.slide(from: start, to: middle)
             try await waitUntil { isTall() }
             screen.window.saveSnapshot(as: "\(name)-mid-swipe")
+            #expect(screen.sundayHeading == sunday, "the weekday row stays still while the days move")
             try await finger.slide(from: middle, to: end)
             #expect(isTall(), "the height holds through the rest of the swipe")
             try finger.up(at: end)

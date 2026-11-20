@@ -46,6 +46,8 @@ struct MonthCalendarView: View {
             }
             .padding(.horizontal, TigerDuckTheme.Spacing.lg)
 
+            WeekdayRow()
+
             MonthGrid(days: Array(repeating: nil, count: 7 * weeks), viewModel: viewModel)
                 .hidden()
                 .overlay(alignment: .top) {
@@ -86,7 +88,32 @@ private struct MonthGrid: View {
     let days: [Date?]
     let viewModel: CalendarViewModel
 
-    private let weekdaySymbols = [
+    static let columns = Array(repeating: GridItem(.flexible()), count: 7)
+
+    var body: some View {
+        LazyVGrid(columns: Self.columns, spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(Array(days.enumerated()), id: \.offset) { _, date in
+                if let date {
+                    DayCellView(
+                        date: date,
+                        isSelected: date.isSameDay(as: viewModel.selectedDate),
+                        isToday: date.isToday,
+                        events: viewModel.eventsOnDate(date)
+                    ) {
+                        viewModel.selectedDate = date
+                    }
+                } else {
+                    Color.clear
+                        .frame(height: 40)
+                }
+            }
+        }
+        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+    }
+}
+
+private struct WeekdayRow: View {
+    private let symbols = [
         String(localized: "weekday_sun_short"),
         String(localized: "weekday_mon_short"),
         String(localized: "weekday_tue_short"),
@@ -95,36 +122,15 @@ private struct MonthGrid: View {
         String(localized: "weekday_fri_short"),
         String(localized: "weekday_sat_short"),
     ]
-    private let columns = Array(repeating: GridItem(.flexible()), count: 7)
 
     var body: some View {
-        VStack(spacing: TigerDuckTheme.Spacing.md) {
-            LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
-                ForEach(weekdaySymbols, id: \.self) { symbol in
-                    Text(symbol)
-                        .font(TigerDuckTheme.Typography.caption)
-                        .foregroundStyle(Color.textSecondary)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.3)
-                }
-            }
-
-            LazyVGrid(columns: columns, spacing: TigerDuckTheme.Spacing.sm) {
-                ForEach(Array(days.enumerated()), id: \.offset) { _, date in
-                    if let date {
-                        DayCellView(
-                            date: date,
-                            isSelected: date.isSameDay(as: viewModel.selectedDate),
-                            isToday: date.isToday,
-                            events: viewModel.eventsOnDate(date)
-                        ) {
-                            viewModel.selectedDate = date
-                        }
-                    } else {
-                        Color.clear
-                            .frame(height: 40)
-                    }
-                }
+        LazyVGrid(columns: MonthGrid.columns, spacing: TigerDuckTheme.Spacing.sm) {
+            ForEach(symbols, id: \.self) { symbol in
+                Text(symbol)
+                    .font(TigerDuckTheme.Typography.caption)
+                    .foregroundStyle(Color.textSecondary)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.3)
             }
         }
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
