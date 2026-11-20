@@ -73,6 +73,7 @@ jobs:
               TigerDuckTests/BrowserPageUITests
               TigerDuckTests/BrowserSiteSignInPageTests
               TigerDuckTests/CalendarDayListScreenTests
+              TigerDuckTests/CalendarMonthSwipeScreenTests
               TigerDuckTests/ClassTableCalendarMenuTests
               TigerDuckTests/ClassTableListTests
               TigerDuckTests/ClassTableShareSheetTests
@@ -115,6 +116,7 @@ jobs:
               TigerDuckTests/MoreHomeLayoutTests
               TigerDuckTests/NavigationBarSearchTests
               TigerDuckTests/PageMenuScreenTests
+              TigerDuckTests/PagerTests
               TigerDuckTests/PasswordFieldAutoFillTests
               TigerDuckTests/PullToRevealSearchTests
               TigerDuckTests/ScrollPositionOriginTests
@@ -128,7 +130,6 @@ jobs:
               TigerDuckTests/TLSPinPromptTests
               TigerDuckTests/TodayCourseCardLayoutTests
               TigerDuckTests/UndatedAssignmentRowScreenTests
-              TigerDuckTests/WhatsNewPagerTests
               TigerDuckTests/WidgetLayoutTests
               TigerDuckTests/WidgetSnapshotPictureTests
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the
@@ -611,12 +612,14 @@ jobs:
         run: swift test
 
   # Below iOS 27 the app's tab roots take UIKit's search controller rather than `.searchable`
-  # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), and the phone leg runs
+  # (swift/TigerDuck/UI/ViewHelpers/View+NavigationBarSearch.swift), below iOS 26 the calendar posts
+  # the month after VoiceOver's page scroll
+  # (swift/TigerDuck/Features/Calendar/Components/MonthCalendarView.swift), and the phone leg runs
   # iOS 27. This job stays on macos-26 to download the iOS 18.6 runtime, the last of iOS 18, and
-  # runs the search suites there on a cold build: there is no cache to restore. macos-15 still
-  # ships iOS 18 runtimes, but its newest Xcode, 26.3, cannot build the app.
-  ios18-search:
-    name: iOS 18 search
+  # runs those tests there on a cold build: there is no cache to restore. macos-15 still ships
+  # iOS 18 runtimes, but its newest Xcode, 26.3, cannot build the app.
+  ios18:
+    name: iOS 18
     if: github.event_name == 'pull_request'
     runs-on: macos-26
     timeout-minutes: 60
@@ -626,16 +629,16 @@ jobs:
           submodules: true
           fetch-depth: 2
 
-      # The suites run only for a change to the search bridge, the pages that use it, its tests or
-      # this file.
+      # The tests run only for a change to the search bridge, the pages that use it, the calendar's
+      # grid and pager, their tests or this file.
       - name: Changed paths
         id: changes
         run: |
           run=true
           files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
-          if ! printf '%s\n' "$files" | grep -qE '^(swift/TigerDuck/UI/ViewHelpers/View\+NavigationBarSearch|swift/TigerDuck/Features/InformationSystem/InformationSystemView|swift/TigerDuck/Features/Bulletins/BulletinsView|swift/TigerDuckTests/SearchDrawerFirstOpenTests|swift/TigerDuckTests/NavigationBarSearchTests)\.swift$|^\.github/workflows/tests\.yaml$'; then
+          if ! printf '%s\n' "$files" | grep -qE '^(swift/TigerDuck/UI/ViewHelpers/View\+NavigationBarSearch|swift/TigerDuck/Features/InformationSystem/InformationSystemView|swift/TigerDuck/Features/Bulletins/BulletinsView|swift/TigerDuckTests/SearchDrawerFirstOpenTests|swift/TigerDuckTests/NavigationBarSearchTests|swift/TigerDuck/Features/Calendar/Components/MonthCalendarView|swift/TigerDuck/Features/Calendar/CalendarViewModel|swift/TigerDuck/UI/SharedUI/Pager|swift/TigerDuckTests/CalendarMonthSwipeTests)\.swift$|^\.github/workflows/tests\.yaml$'; then
             run=false
-            echo "No change to the navigation bar search or to tests.yaml: skipping the build and tests."
+            echo "No change to the navigation bar search, the calendar grid or tests.yaml: skipping the build and tests."
           fi
           echo "run=$run" >> "$GITHUB_OUTPUT"
 
@@ -675,8 +678,9 @@ jobs:
           fi
 
       # A run whose filter matches nothing exits 0, so the step also fails unless Swift Testing ran
-      # as many tests as the suites' files declare: it counts a parameterized test once.
-      - name: Search tests
+      # as many tests as the suites' files declare, plus the single tests: it counts a parameterized
+      # test once.
+      - name: Tests
         if: steps.changes.outputs.run == 'true'
         env:
           UDID: ${{ steps.sim.outputs.udid }}
@@ -694,6 +698,10 @@ jobs:
             expected=$((expected + $(grep -cE '^[[:space:]]*@Test' "swift/TigerDuckTests/$suite.swift")))
             only+=("-only-testing:TigerDuckTests/$suite")
           done
+          for test in "CalendarMonthSwipeScreenTests/arrows()" "CalendarMonthSwipeScreenTests/turnDuringTheWait()" "CalendarMonthSwipeScreenTests/voiceOver()"; do
+            expected=$((expected + 1))
+            only+=("-only-testing:TigerDuckTests/$test")
+          done
           log="$RUNNER_TEMP/tests.log"
           xcodebuild test-without-building \
             -xctestrun "${runs[0]}" \
@@ -703,7 +711,7 @@ jobs:
             2>&1 | tee "$log"
           ran=$(grep -oE 'Test run with [0-9]+ tests?' "$log" | grep -oE '[0-9]+' | tail -n 1 || true)
           if [ "${ran:-0}" -ne "$expected" ]; then
-            echo "::error::ran ${ran:-no} tests; the suites declare $expected"
+            echo "::error::ran ${ran:-no} tests; the suites and single tests declare $expected"
             exit 1
           fi
-          echo "ran $ran tests, as the suites declare"
+          echo "ran $ran tests, as the suites and single tests declare"

@@ -6,24 +6,36 @@ import UIKit
 
 @MainActor
 @Suite(.serialized)
-struct WhatsNewPagerTests {
-    @Observable final class Pager {
+struct PagerTests {
+    @Observable final class Probe {
         var index = 0
-        var position = WhatsNewPagerPosition()
+        var position = PagerPosition()
         var farthest: CGFloat = 0
     }
 
     struct Host: View {
-        @Bindable var pager: Pager
+        @Bindable var pager: Probe
         var lockedPages: Set<Int> = []
 
         var body: some View {
-            WhatsNewPager(count: 3, index: $pager.index, position: $pager.position, lockedPages: lockedPages) { _ in
+            Pager(count: 3, index: $pager.index, position: $pager.position, lockedPages: lockedPages) { _ in
                 Color.clear
             }
             .onScrollGeometryChange(for: CGFloat.self) { $0.visibleRect.minX } action: { _, minX in
                 pager.farthest = max(pager.farthest, minX)
             }
+        }
+    }
+
+    /// A layout offered the calendar's grid, at the window's edge, a width a fraction of a point
+    /// over a whole one.
+    struct ManyPages: View {
+        @Bindable var pager: Probe
+
+        var body: some View {
+            Pager(count: 2_400, index: $pager.index, position: $pager.position) { Text(verbatim: "\($0)") }
+                .frame(width: 375 + 1.0 / 2_400)
+                .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -86,7 +98,7 @@ struct WhatsNewPagerTests {
     /// VoiceOver's three-finger swipe and other system scrolls move the pager without a drag.
     @Test func theStepFollowsAScrollThatIsNotADrag() async throws {
         try await withAccessibilityAutomation {
-            let pager = Pager()
+            let pager = Probe()
             let (window, scrollView) = try await host(Host(pager: pager))
             defer { window.isHidden = true }
 
@@ -95,8 +107,35 @@ struct WhatsNewPagerTests {
         }
     }
 
+    @Test func theVisiblePagesAreBothPagesInADragAndOneAtRest() async throws {
+        let pager = Probe()
+        let (window, scrollView) = try await host(Host(pager: pager))
+        defer { window.isHidden = true }
+        let finger = Finger(scrollView)
+
+        finger.touchDown()
+        try await finger.move(to: 0.3)
+        try await waitUntil { pager.position.visiblePages == 0...1 }
+        try await finger.move(to: 1)
+        finger.lift()
+        try await waitUntil { pager.position.visiblePages == 1...1 && pager.position.settledPage == 1 }
+    }
+
+    @Test func aPagerOfManyPagesOpensOnItsSettledPageInPagesAsWideAsItself() async throws {
+        let pager = Probe()
+        pager.index = 1_500
+        pager.position = PagerPosition(page: 1_500)
+        let (window, scrollView) = try await host(ManyPages(pager: pager))
+        defer { window.isHidden = true }
+
+        try await waitUntil { Finger(scrollView).isResting(on: 1_500) }
+        #expect(scrollView.contentSize.width == 2_400 * scrollView.bounds.width)
+        #expect(pager.index == 1_500)
+        #expect(pager.position.settledPage == 1_500)
+    }
+
     @Test func theButtonsMoveThePagerAfterAScrollThatIsNotADrag() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager))
         defer { window.isHidden = true }
         let finger = Finger(scrollView)
@@ -109,7 +148,7 @@ struct WhatsNewPagerTests {
     }
 
     @Test func aSwipeIntoALockedPageLandsThereAndGoesNoFurther() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
         defer { window.isHidden = true }
         let lock = try await forwardLock(in: window)
@@ -131,7 +170,7 @@ struct WhatsNewPagerTests {
     }
 
     @Test func aScrollThatIsNotADragStopsAtALockedPage() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager, lockedPages: [1]))
         defer { window.isHidden = true }
         let finger = Finger(scrollView)
@@ -150,8 +189,8 @@ struct WhatsNewPagerTests {
     }
 
     @Test(arguments: [false, true])
-    func theLockHoldsTheWhatsNewPager(locksForward: Bool) async throws {
-        let (window, scrollView) = try await host(Host(pager: Pager(), lockedPages: locksForward ? [0] : []))
+    func theLockHoldsThePager(locksForward: Bool) async throws {
+        let (window, scrollView) = try await host(Host(pager: Probe(), lockedPages: locksForward ? [0] : []))
         defer { window.isHidden = true }
 
         let lock = try await forwardLock(in: window)
@@ -167,7 +206,7 @@ struct WhatsNewPagerTests {
     }
 
     private func swipeAndPress() async throws {
-        let pager = Pager()
+        let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager))
         defer { window.isHidden = true }
         let finger = Finger(scrollView)
@@ -195,7 +234,7 @@ struct WhatsNewPagerTests {
     }
 
     /// Without a scene the host builds no `UIScrollView`.
-    private func host(_ host: Host) async throws -> (UIWindow, UIScrollView) {
+    private func host(_ host: some View) async throws -> (UIWindow, UIScrollView) {
         let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
         let window = UIWindow(windowScene: scene)
         window.rootViewController = UIHostingController(rootView: host)
