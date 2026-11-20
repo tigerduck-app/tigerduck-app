@@ -167,11 +167,12 @@ struct LocationCard: View {
     let policy: VisualStylePolicy
 
     var body: some View {
-        if location.isEmpty {
+        let shown = location.trimmingCharacters(in: .whitespacesAndNewlines)
+        if shown.isEmpty {
             EmphasisCard(label: label, value: "—", isChanged: isChanged, policy: policy)
         } else {
-            EmphasisCard(label: label, value: location, isChanged: isChanged, policy: policy)
-                .copiesOnTap(location, labeled: label, hint: "class_table_copy_location", toast: "class_table_location_copied")
+            EmphasisCard(label: label, value: shown, isChanged: isChanged, policy: policy)
+                .copiesOnTap(shown, labeled: label, hint: "class_table_copy_location", toast: "class_table_location_copied")
         }
     }
 }

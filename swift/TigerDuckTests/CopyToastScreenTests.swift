@@ -10,7 +10,7 @@ import UIKit
 struct CopyToastScreenTests {
     typealias Look = ClubScreensTests.Look
 
-    static let policy = AppPreferences().visualStylePolicy
+    static let policy = VisualStylePolicy(preset: .default)
     static let courseLocation = String(localized: "course_detail_location_label")
     static let clubLocation = String(localized: "class_table_club_location_label")
     static let copyLocation = String(localized: "class_table_copy_location")
@@ -171,13 +171,13 @@ struct CopyToastScreenTests {
         }
     }
 
-    @Test("an empty location shows a dash that is no button and copies nothing", arguments: [false, true])
-    func emptyLocation(onClubSheet: Bool) async throws {
+    @Test("an empty or blank location shows a dash that is no button and copies nothing", arguments: [false, true], ["", " \n "])
+    func emptyLocation(onClubSheet: Bool, location: String) async throws {
         try await withAccessibilityAutomation {
-            let club = try Self.club(at: "")
+            let club = try Self.club(at: location)
             let sheet = onClubSheet
                 ? AnyView(ClubActivityDetailSheet(club: club, policy: Self.policy))
-                : AnyView(CourseSheet(course: Self.course(classroom: "")))
+                : AnyView(CourseSheet(course: Self.course(classroom: location)))
             let window = try ClubScreensTests.show(sheet, look: ClubScreensTests.looks[0], height: 874)
             defer { window.isHidden = true }
             UIPasteboard.general.string = "before"
