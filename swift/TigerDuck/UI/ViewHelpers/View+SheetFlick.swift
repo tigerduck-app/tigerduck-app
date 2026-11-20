@@ -25,8 +25,7 @@ private struct FlickClosesSheet: ViewModifier {
 
     @Environment(\.dismiss) private var dismiss
     @State private var isAtTop = true
-    /// Read where the drag begins: a flick counts from the detent and the scroll position it began at.
-    @State private var drag: (start: CGPoint, atTop: Bool, isLarge: Bool)?
+    @State private var dragStart: (location: CGPoint, wasAtTop: Bool, wasLarge: Bool)?
 
     func body(content: Content) -> some View {
         content
@@ -38,14 +37,14 @@ private struct FlickClosesSheet: ViewModifier {
             .simultaneousGesture(
                 DragGesture(coordinateSpace: .global)
                     .onChanged { value in
-                        if drag?.start != value.startLocation { drag = (value.startLocation, isAtTop, isLarge) }
+                        if dragStart?.location != value.startLocation { dragStart = (value.startLocation, isAtTop, isLarge) }
                     }
                     .onEnded { value in
-                        defer { drag = nil }
-                        guard let drag, drag.start == value.startLocation else { return }
+                        defer { dragStart = nil }
+                        guard let dragStart, dragStart.location == value.startLocation else { return }
                         if SheetFlick.closesSheet(
-                            speed: value.velocity.height, travel: value.translation.height, startedAtTop: drag.atTop,
-                            isLarge: drag.isLarge
+                            speed: value.velocity.height, travel: value.translation.height, startedAtTop: dragStart.wasAtTop,
+                            isLarge: dragStart.wasLarge
                         ) {
                             dismiss()
                         }

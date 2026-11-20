@@ -33,7 +33,6 @@ struct ScoreCourseSheetScreenTests {
         )
     }
 
-    /// Removed by the test's own `defer`, which also keeps it until the test ends.
     struct Folder {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("ScoreCourseSheetScreenTests-\(UUID().uuidString)", isDirectory: true)
