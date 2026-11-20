@@ -146,8 +146,10 @@ final class PushAppDelegate: NSObject, UIApplicationDelegate, PushTokenSource {
             )
         }
         Self.run({ [deliveredNotifications, work] in
-            await deliveredNotifications.removeExpiredReminders()
-            return await work()
+            let removal = Task { await deliveredNotifications.removeExpiredReminders() }
+            let result = await work()
+            await removal.value
+            return result
         }, within: syncTriggerLimits.answer, then: completionHandler)
     }
 

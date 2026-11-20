@@ -260,6 +260,33 @@ struct PushAppDelegateTests {
         #expect(leftWhenAnswered == ["not-due", "bulletin"])
     }
 
+    @Test("A read of the delivered notifications that stalls does not hold the sync, and the answer waits for both")
+    func aStalledReadDoesNotHoldTheSync() async throws {
+        let released = StateSignal(false)
+        let center = Self.remindersDueAndNot()
+        center.beforeReading = { await released.wait(until: { $0 }) }
+        let delegate = Self.delegate(center)
+        let events = Events()
+        let answers = Answers()
+        delegate.onSyncTrigger = {
+            events.record("sync")
+            return .synced
+        }
+        delegate.beforeAnsweringSyncTrigger = { events.record("widgets") }
+
+        delegate.application(
+            UIApplication.shared, didReceiveRemoteNotification: ["kind": "sync_trigger"], fetchCompletionHandler: answers.record
+        )
+        try await waitUntil { events.all == ["sync", "widgets"] }
+        let answeredBeforeTheRead = !answers.results.isEmpty
+        released.value = true
+        try await waitUntil { !answers.results.isEmpty }
+
+        #expect(!answeredBeforeTheRead)
+        #expect(answers.results == [.newData])
+        #expect(center.delivered.map(\.identifier) == ["not-due", "bulletin"])
+    }
+
     @Test("Becoming active removes the reminders already due")
     func becomingActiveRemovesDueReminders() async throws {
         let appEvents = NotificationCenter()

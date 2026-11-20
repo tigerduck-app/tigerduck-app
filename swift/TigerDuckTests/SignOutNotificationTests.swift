@@ -67,6 +67,7 @@ struct SignOutNotificationTests {
 @MainActor
 final class DeliveredNotificationsStub: DeliveredNotificationCenter {
     var delivered: [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]
+    var beforeReading: (@MainActor () async -> Void)?
 
     init(_ delivered: [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]) {
         self.delivered = delivered
@@ -77,7 +78,8 @@ final class DeliveredNotificationsStub: DeliveredNotificationCenter {
     }
 
     func deliveredNotificationDetails() async -> [(identifier: String, thread: String, userInfo: [AnyHashable: Any])] {
-        delivered
+        await beforeReading?()
+        return delivered
     }
 
     func removeDeliveredNotifications(withIdentifiers identifiers: [String]) {
