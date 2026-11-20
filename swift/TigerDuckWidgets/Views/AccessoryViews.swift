@@ -66,7 +66,7 @@ struct AccessoryRectangularView: View {
     /// The Lock Screen draws accessory widgets in its vibrant mode, by luminance, so the underline takes the
     /// light ink of a dark background.
     private static func assessmentInk(for change: SnapshotCourseChange?) -> Color? {
-        change?.assessment == true ? Color(widgetHex: AssessmentInk.dark) : nil
+        AssessmentInk.hex(isAssessment: change?.assessment == true, onDark: true).map(Color.init(widgetHex:))
     }
 
     var body: some View {
