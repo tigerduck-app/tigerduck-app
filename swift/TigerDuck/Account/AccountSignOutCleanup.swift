@@ -47,7 +47,7 @@ enum AccountSignOutCleanup {
 
     #if os(iOS)
     static func removeAccountNotifications(from center: any DeliveredNotificationCenter) async {
-        let identifiers = await center.deliveredNotificationThreads()
+        let identifiers = await center.deliveredNotificationDetails()
             .filter { $0.thread != MailConstants.notificationThread }
             .map(\.identifier)
         center.removeDeliveredNotifications(withIdentifiers: identifiers)
@@ -58,13 +58,15 @@ enum AccountSignOutCleanup {
 #if os(iOS)
 @MainActor
 protocol DeliveredNotificationCenter {
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)]
+    func deliveredNotificationDetails() async -> [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]
     func removeDeliveredNotifications(withIdentifiers identifiers: [String])
 }
 
 extension UNUserNotificationCenter: DeliveredNotificationCenter {
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
-        await deliveredNotifications().map { ($0.request.identifier, $0.request.content.threadIdentifier) }
+    func deliveredNotificationDetails() async -> [(identifier: String, thread: String, userInfo: [AnyHashable: Any])] {
+        await deliveredNotifications().map {
+            ($0.request.identifier, $0.request.content.threadIdentifier, $0.request.content.userInfo)
+        }
     }
 }
 #endif

@@ -56,7 +56,7 @@ struct SignOutNotificationTests {
             try await SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) {
                 auth.logout()
                 try await waitUntil { center.delivered.isEmpty }
-                await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course")) }.value
+                await auth.startSignOutCalls { center.delivered.append(("class-reminder", "course", [:])) }.value
             }
         }
 
@@ -66,13 +66,17 @@ struct SignOutNotificationTests {
 
 @MainActor
 final class DeliveredNotificationsStub: DeliveredNotificationCenter {
-    var delivered: [(identifier: String, thread: String)]
+    var delivered: [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]
 
-    init(_ delivered: [(identifier: String, thread: String)] = []) {
+    init(_ delivered: [(identifier: String, thread: String, userInfo: [AnyHashable: Any])]) {
         self.delivered = delivered
     }
 
-    func deliveredNotificationThreads() async -> [(identifier: String, thread: String)] {
+    convenience init(_ delivered: [(identifier: String, thread: String)] = []) {
+        self.init(delivered.map { ($0.identifier, $0.thread, [:]) })
+    }
+
+    func deliveredNotificationDetails() async -> [(identifier: String, thread: String, userInfo: [AnyHashable: Any])] {
         delivered
     }
 
