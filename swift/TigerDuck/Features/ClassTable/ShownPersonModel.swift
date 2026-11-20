@@ -38,10 +38,10 @@ final class ShownPersonModel {
         !nicknameDraft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    func startRenamingPerson() {
-        guard let shownPerson else { return }
-        personInAlert = shownPerson
-        nicknameDraft = shownPerson.nickname
+    func startRenamingPerson(_ person: ImportedPerson? = nil) {
+        guard let person = person ?? shownPerson else { return }
+        personInAlert = person
+        nicknameDraft = person.nickname
         isRenamingPerson = true
     }
 
@@ -50,9 +50,9 @@ final class ShownPersonModel {
         if store.rename(personInAlert.id, to: nicknameDraft, for: AccountSession.school.currentSignIn) == .failed { showsSaveFailed = true }
     }
 
-    func startDeletingPerson() {
-        guard let shownPerson else { return }
-        personInAlert = shownPerson
+    func startDeletingPerson(_ person: ImportedPerson? = nil) {
+        guard let person = person ?? shownPerson else { return }
+        personInAlert = person
         isDeletingPerson = true
     }
 

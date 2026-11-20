@@ -6,6 +6,19 @@ struct ClassTablePageSettingsView: View {
 
     var body: some View {
         List {
+            if SettingsRow.classTableList.isShown(in: state) {
+                Section {
+                    NavigationLink(SettingsRow.classTableList.label) {
+                        AppDestination { app in
+                            ClassTableListView(
+                                store: .shared,
+                                userName: ClassTableSwitcherEntry.userName(studentId: app.authService.storedStudentId)
+                            )
+                        }
+                    }
+                    .settingsRow(.classTableList)
+                }
+            }
             Section {
                 ClassTableDisplayToggles(preferences: preferences)
             }

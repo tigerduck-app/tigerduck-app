@@ -43,6 +43,7 @@ SettingsDeveloperSection.swift
 TigerSyncStatusView.swift
 TriggersDebugView.swift
 WhatsNewSampleFlow.swift
+UITestFixtureApp.swift
 
 # UI/ViewHelpers — UIKit / iOS-gesture extensions (UIApplication, UINavigationController)
 UIApplication+Keyboard.swift
@@ -103,6 +104,9 @@ TimetableSoloCell.swift
 # Features/ClassTable — the bar of the iPhone's search sheets; the Mac lays out its add-course
 # sheet in AddCourseMacLayout.swift
 SearchSheetChrome.swift
+
+# Features/ClassTable — the Class Tables list, which only the iPhone's class table settings open
+ClassTableListView.swift
 
 # Features/ClassTable — club subscriptions and their activities, which only the iPhone class table
 # shows for now

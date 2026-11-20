@@ -327,7 +327,7 @@ struct ImportedClassTableStoreTests {
         #expect(store.shownPersonID == nil)
     }
 
-    @Test("failed changes preserve the previous person, selection and durable file", arguments: ["update", "rename", "delete"])
+    @Test("failed changes preserve the previous person, selection and durable file", arguments: ["update", "rename", "delete", "move"])
     func failedChangesKeepPreviousState(action: String) throws {
         let folder = Folder()
         let store = Self.store(folder)
@@ -342,12 +342,15 @@ struct ImportedClassTableStoreTests {
             #expect(store.add(Self.code("B11300001", [Self.spring]), nickname: "Hua", courses: [:], for: testSignIn) == nil)
         case "rename":
             store.rename(person.id, to: "New name", for: testSignIn)
+        case "move":
+            store.move(person.id, to: .other, before: nil, for: testSignIn)
         default:
             store.delete(person.id, for: testSignIn)
         }
 
         #expect(store.people.map(\.id) == [person.id])
         #expect(store.people.first?.nickname == "Ming")
+        #expect(store.people.first?.placement == .rotation)
         #expect(store.people.first?.terms.map(\.semester) == ["1151"])
         #expect(store.shownPersonID == person.id)
         #expect(try Data(contentsOf: folder.file) == kept)
@@ -437,5 +440,123 @@ struct ImportedClassTableStoreTests {
         store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn)
 
         #expect(store.people.map(\.nickname) == ["Hua"])
+    }
+
+    private static func placed(_ store: ImportedClassTableStore) -> [ImportedPerson.Placement: [String]] {
+        Dictionary(grouping: store.people, by: \.placement).mapValues { $0.map(\.nickname) }
+    }
+
+    private static func four(in store: ImportedClassTableStore) throws -> [ImportedPerson] {
+        try ["A", "B", "C", "D"].enumerated().map { index, name in
+            try #require(store.add(Self.code("B1130000\(index + 1)", [Self.fall]), nickname: name, courses: [:], for: testSignIn))
+        }
+    }
+
+    @Test("a file from before placements, or with a placement this build does not know, puts everyone in the rotation")
+    func filesWithoutAPlacementReadAsTheRotation() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let people = try Self.four(in: store)
+        store.move(people[1].id, to: .other, before: nil, for: testSignIn)
+        store.move(people[2].id, to: .longPressMenu, before: nil, for: testSignIn)
+        var file = try #require(JSONSerialization.jsonObject(with: Data(contentsOf: folder.file)) as? [String: Any])
+        var stored = try #require(file["people"] as? [[String: Any]])
+        #expect(stored.compactMap { $0["placement"] as? String } == ["rotation", "rotation", "other", "longPressMenu"])
+        stored[0]["placement"] = nil
+        stored[1]["placement"] = nil
+        stored[2]["placement"] = "pinned"
+        file["people"] = stored
+        try JSONSerialization.data(withJSONObject: file).write(to: folder.file)
+
+        let reloaded = Self.store(folder)
+
+        #expect(reloaded.people.map(\.nickname) == ["A", "D", "B", "C"])
+        #expect(Self.placed(reloaded) == [.rotation: ["A", "D", "B"], .longPressMenu: ["C"]])
+    }
+
+    @Test("someone new joins the rotation, and a new import of them or a rename keeps their placement")
+    func newPeopleJoinTheRotation() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let ming = try #require(store.add(Self.code("B11300001", [Self.fall]), nickname: "Ming", courses: [:], for: testSignIn))
+        #expect(ming.placement == .rotation)
+
+        store.move(ming.id, to: .other, before: nil, for: testSignIn)
+        store.add(Self.code("B11300001", [Self.spring]), nickname: "Ming", courses: [:], for: testSignIn)
+        store.rename(ming.id, to: "Xiao Ming", for: testSignIn)
+        store.updateCourses(
+            ming.id, semester: "1142", courseNos: Self.spring.courseNos, courses: [],
+            importedAt: try #require(store.people.first).importedAt, for: testSignIn
+        )
+        store.add(Self.code("B11300002", [Self.fall]), nickname: "Hua", courses: [:], for: testSignIn)
+
+        #expect(Self.placed(store) == [.other: ["Xiao Ming"], .rotation: ["Hua"]])
+        #expect(Self.placed(Self.store(folder)) == [.other: ["Xiao Ming"], .rotation: ["Hua"]])
+    }
+
+    @Test("a move reorders within a placement, moves between placements and into an empty one, and is kept")
+    func movesWithinAndAcrossPlacements() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let people = try Self.four(in: store)
+        let (a, b, c, d) = (people[0].id, people[1].id, people[2].id, people[3].id)
+
+        #expect(store.move(a, to: .rotation, before: c, for: testSignIn) == .saved)
+        #expect(Self.placed(store) == [.rotation: ["B", "A", "C", "D"]])
+        store.move(d, to: .rotation, before: b, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D", "B", "A", "C"]])
+        store.move(b, to: .rotation, before: nil, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D", "A", "C", "B"]])
+
+        store.move(c, to: .other, before: nil, for: testSignIn)
+        store.move(a, to: .other, before: c, for: testSignIn)
+        store.move(b, to: .longPressMenu, before: nil, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D"], .other: ["A", "C"], .longPressMenu: ["B"]])
+        store.move(a, to: .other, before: nil, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D"], .other: ["C", "A"], .longPressMenu: ["B"]])
+        store.move(c, to: .longPressMenu, before: d, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D"], .other: ["A"], .longPressMenu: ["B", "C"]])
+        store.move(c, to: .other, before: a, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D"], .other: ["C", "A"], .longPressMenu: ["B"]])
+        #expect(store.move(UUID(), to: .rotation, before: nil, for: testSignIn) == .skipped)
+        #expect(store.move(a, to: .rotation, before: a, for: testSignIn) == .skipped)
+
+        store.delete(c, for: testSignIn)
+        #expect(Self.placed(store) == [.rotation: ["D"], .other: ["A"], .longPressMenu: ["B"]])
+        #expect(Self.placed(Self.store(folder)) == Self.placed(store))
+        #expect(Self.store(folder).people.map(\.nickname) == store.people.map(\.nickname))
+    }
+
+    @Test("a move after the sign-in ended writes nothing")
+    func moveAfterSignOut() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let people = try Self.four(in: store)
+        let kept = try Data(contentsOf: folder.file)
+
+        #expect(store.move(people[0].id, to: .other, before: nil, for: endedTestSignIn) == .failed)
+
+        #expect(Self.placed(store) == [.rotation: ["A", "B", "C", "D"]])
+        #expect(try Data(contentsOf: folder.file) == kept)
+    }
+
+    @Test("the next class table steps through the user and the rotation only")
+    func showNextKeepsToTheRotation() throws {
+        let folder = Folder()
+        let store = Self.store(folder)
+        let people = try Self.four(in: store)
+        store.move(people[1].id, to: .longPressMenu, before: nil, for: testSignIn)
+        store.move(people[2].id, to: .other, before: nil, for: testSignIn)
+
+        var shown: [String] = []
+        for _ in 0..<3 {
+            store.showNext()
+            shown.append(store.shownPerson?.nickname ?? "user")
+        }
+        #expect(shown == ["A", "D", "user"])
+
+        store.show(people[2].id)
+        store.showNext()
+        #expect(store.shownPerson?.nickname == "A")
     }
 }

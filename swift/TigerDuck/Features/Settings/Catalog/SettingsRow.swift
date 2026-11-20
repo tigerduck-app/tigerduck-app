@@ -10,7 +10,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
     case appIcon, apiEndpoint, storage
     case version, checkForUpdates, serverStatus, whatsNew, website, aboutOthers
     case showFullDueDate, invertSlider, assignmentReminders, liveActivity
-    case pinTodayCourses, showClassroom, outlineRequiredCourses, showAllPeriods, courseNameSize, classReminders
+    case classTableList, pinTodayCourses, showClassroom, outlineRequiredCourses, showAllPeriods, courseNameSize, classReminders
     case englishCourseNames, englishClassroomNames, mandarinClassroomNames, reassignCourseColors
     case bulletinPush
     case mailNotifications, mailDisplayName, mailStorage
@@ -50,6 +50,7 @@ nonisolated enum SettingsRow: String, CaseIterable, Identifiable {
         case .invertSlider: "settings_invert_slider_direction"
         case .assignmentReminders: "settings_assignment_due_reminder"
         case .liveActivity: "live_activity_settings_nav_title"
+        case .classTableList: "class_table_list_title"
         case .pinTodayCourses: "settings_class_table_pin_today"
         case .showClassroom: "settings_class_table_show_classroom"
         case .outlineRequiredCourses: "settings_class_table_outline_required"
