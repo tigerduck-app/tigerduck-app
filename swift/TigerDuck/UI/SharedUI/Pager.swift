@@ -22,6 +22,8 @@ struct Pager<Page: View>: View {
     @Binding var index: Int
     @Binding var position: PagerPosition
     var lockedPages: Set<Int> = []
+    /// Called when a scroll, not `PagerPosition.go(to:)`, settles the pager on another page.
+    var onScrollSettle: (Int) -> Void = { _ in }
     @ViewBuilder let page: (Int) -> Page
 
     @Environment(\.displayScale) private var displayScale
@@ -82,6 +84,7 @@ struct Pager<Page: View>: View {
         index = step
         if let page = spot.restingPage, page != settled {
             position.settledPage = page
+            onScrollSettle(page)
         }
     }
 

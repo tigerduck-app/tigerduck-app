@@ -62,6 +62,10 @@ struct CalendarMonthSwipeScreenTests {
         var months: [Date] = []
     }
 
+    final class Posts {
+        var titles: [String] = []
+    }
+
     struct Page: View {
         let viewModel: CalendarViewModel
         let shown: Shown
@@ -90,7 +94,7 @@ struct CalendarMonthSwipeScreenTests {
         func rests(on month: Date) -> Bool {
             let offset = CGFloat(CalendarViewModel.monthPage(of: month)) * pager.bounds.width
             return !pager.isDragging && !pager.isDecelerating && abs(pager.contentOffset.x - offset) < 0.5
-                && model.displayedMonth == month && shows(CalendarMonthSwipeScreenTests.title(of: month))
+                && model.displayedMonth == month && shows(MonthCalendarView.title(of: month))
         }
 
         var state: String {
@@ -144,12 +148,6 @@ struct CalendarMonthSwipeScreenTests {
             window.makeKeyAndVisible()
             try await fingerTap(at: window.convert(element.accessibilityActivationPoint, from: window.screen.coordinateSpace), in: window)
         }
-    }
-
-    static func title(of month: Date) -> String {
-        var style = Date.FormatStyle.dateTime.year().month(.wide)
-        style.timeZone = TaipeiTime.timeZone
-        return month.formatted(style)
     }
 
     /// On iOS 26.5 a new window's first touch can go nowhere, so a tap on the empty page below the
@@ -227,9 +225,13 @@ struct CalendarMonthSwipeScreenTests {
         }
     }
 
-    @Test("the arrows turn the grid to the month a swipe shows")
+    @Test("the arrows turn the grid to the month a swipe shows, posting no page scroll")
     func arrows() async throws {
         try await withAccessibilityAutomation {
+            let posts = Posts()
+            let post = MonthCalendarView.postPageScrolled
+            MonthCalendarView.postPageScrolled = { posts.titles.append($0) }
+            defer { MonthCalendarView.postPageScrolled = post }
             let screen = try await Self.show(on: Self.december)
             defer { screen.window.isHidden = true }
 
@@ -245,6 +247,12 @@ struct CalendarMonthSwipeScreenTests {
             try await screen.tap(next)
             try await screen.settle(on: Self.january)
             #expect(abs(screen.pager.contentOffset.x - swiped) < 0.5)
+            try await Task.sleep(for: MonthCalendarView.pageScrolledDelay * 3)
+            if #available(iOS 26, *) {
+                #expect(posts.titles.isEmpty)
+            } else {
+                #expect(posts.titles == [MonthCalendarView.title(of: Self.january)], "only the swipe posts")
+            }
         }
     }
 
@@ -260,9 +268,13 @@ struct CalendarMonthSwipeScreenTests {
         }
     }
 
-    @Test("VoiceOver reaches the days of the month shown, a tap selects one, and its page scroll turns the month and names it")
+    @Test("VoiceOver reaches the days of the month shown, a tap selects one, and its page scroll turns the month and says it once")
     func voiceOver() async throws {
         try await withAccessibilityAutomation {
+            let posts = Posts()
+            let post = MonthCalendarView.postPageScrolled
+            MonthCalendarView.postPageScrolled = { posts.titles.append($0) }
+            defer { MonthCalendarView.postPageScrolled = post }
             let screen = try await Self.show(on: Self.december)
             defer { screen.window.isHidden = true }
 
@@ -277,9 +289,14 @@ struct CalendarMonthSwipeScreenTests {
             #expect(screen.scrollLeftPageAsVoiceOverDoes())
             try await screen.settle(on: Self.january)
             #expect(screen.element(on: CalendarMonthPageTests.month(2027, 1, day: 31)) != nil)
+            let january = MonthCalendarView.title(of: Self.january)
             if #available(iOS 26, *) {
                 let status = screen.scrollStatus
-                #expect(status == Self.title(of: Self.january))
+                #expect(status == january)
+                #expect(posts.titles.isEmpty, "the scroll status says the month, so nothing else does")
+            } else {
+                try await waitUntil { !posts.titles.isEmpty }
+                #expect(posts.titles == [january])
             }
         }
     }

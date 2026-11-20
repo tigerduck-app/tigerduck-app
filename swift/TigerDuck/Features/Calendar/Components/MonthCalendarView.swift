@@ -17,11 +17,17 @@ struct MonthCalendarView: View {
         _weeks = State(initialValue: Self.weeks(onPage: page))
     }
 
-    private var monthTitle: String {
+    /// Tests swap it: a posted accessibility notification cannot be observed.
+    static var postPageScrolled: (String) -> Void = { AccessibilityNotification.PageScrolled($0).post() }
+    static let pageScrolledDelay = Duration.milliseconds(100)
+
+    static func title(of month: Date) -> String {
         var style = Date.FormatStyle.dateTime.year().month(.wide)
         style.timeZone = TaipeiTime.timeZone
-        return viewModel.displayedMonth.formatted(style)
+        return month.formatted(style)
     }
+
+    private var monthTitle: String { Self.title(of: viewModel.displayedMonth) }
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -51,7 +57,7 @@ struct MonthCalendarView: View {
             MonthGrid(days: Array(repeating: nil, count: 7 * weeks), viewModel: viewModel)
                 .hidden()
                 .overlay(alignment: .top) {
-                    Pager(count: CalendarViewModel.monthPageCount, index: $page, position: $position) { page in
+                    Pager(count: CalendarViewModel.monthPageCount, index: $page, position: $position, onScrollSettle: announce(page:)) { page in
                         MonthGrid(days: CalendarViewModel.buildCalendarDays(for: CalendarViewModel.month(atPage: page)), viewModel: viewModel)
                             .frame(maxHeight: .infinity, alignment: .top)
                     }
@@ -79,6 +85,18 @@ struct MonthCalendarView: View {
         let isNextDoor = abs(target - position.settledPage) == 1
         withAnimation(isNextDoor && !reduceMotion ? .pageTurn : nil) {
             position.go(to: target)
+        }
+    }
+
+    /// Before iOS 26 a page scroll's status cannot be set, and VoiceOver would say "page N of 2400".
+    /// UIKit posts that status about 10 ms after the grid rests, so the month follows it.
+    private func announce(page: Int) {
+        if #unavailable(iOS 26) {
+            let title = Self.title(of: CalendarViewModel.month(atPage: page))
+            Task {
+                try? await AppClock.sleep(until: ContinuousClock.now + Self.pageScrolledDelay)
+                Self.postPageScrolled(title)
+            }
         }
     }
 
