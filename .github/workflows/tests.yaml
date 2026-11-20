@@ -636,7 +636,7 @@ jobs:
         run: |
           run=true
           files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
-          if ! printf '%s\n' "$files" | grep -qE '^(swift/TigerDuck/UI/ViewHelpers/View\+NavigationBarSearch|swift/TigerDuck/Features/InformationSystem/InformationSystemView|swift/TigerDuck/Features/Bulletins/BulletinsView|swift/TigerDuckTests/SearchDrawerFirstOpenTests|swift/TigerDuckTests/NavigationBarSearchTests|swift/TigerDuck/Features/Calendar/Components/MonthCalendarView|swift/TigerDuck/UI/SharedUI/Pager|swift/TigerDuckTests/CalendarMonthSwipeTests)\.swift$|^\.github/workflows/tests\.yaml$'; then
+          if ! printf '%s\n' "$files" | grep -qE '^(swift/TigerDuck/UI/ViewHelpers/View\+NavigationBarSearch|swift/TigerDuck/Features/InformationSystem/InformationSystemView|swift/TigerDuck/Features/Bulletins/BulletinsView|swift/TigerDuckTests/SearchDrawerFirstOpenTests|swift/TigerDuckTests/NavigationBarSearchTests|swift/TigerDuck/Features/Calendar/Components/MonthCalendarView|swift/TigerDuck/Features/Calendar/CalendarViewModel|swift/TigerDuck/UI/SharedUI/Pager|swift/TigerDuckTests/CalendarMonthSwipeTests)\.swift$|^\.github/workflows/tests\.yaml$'; then
             run=false
             echo "No change to the navigation bar search, the calendar grid or tests.yaml: skipping the build and tests."
           fi

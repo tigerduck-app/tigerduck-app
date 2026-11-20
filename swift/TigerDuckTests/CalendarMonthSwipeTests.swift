@@ -296,6 +296,7 @@ struct CalendarMonthSwipeScreenTests {
                 #expect(posts.titles.isEmpty, "the scroll status says the month, so nothing else does")
             } else {
                 try await waitUntil { !posts.titles.isEmpty }
+                try await Task.sleep(for: MonthCalendarView.pageScrolledDelay * 3)
                 #expect(posts.titles == [january])
             }
         }

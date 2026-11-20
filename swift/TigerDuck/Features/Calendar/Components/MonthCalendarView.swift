@@ -8,6 +8,7 @@ struct MonthCalendarView: View {
     @State private var page: Int
     @State private var position: PagerPosition
     @State private var weeks: Int
+    @State private var announcement: Task<Void, Never>?
 
     init(viewModel: CalendarViewModel) {
         self.viewModel = viewModel
@@ -74,6 +75,7 @@ struct MonthCalendarView: View {
             let target = CalendarViewModel.monthPage(of: month)
             if target != page { turn(to: target) }
         }
+        .onDisappear { announcement?.cancel() }
         .onChange(of: position.visiblePages) { _, pages in
             let tallest = pages.map(Self.weeks(onPage:)).max() ?? weeks
             withAnimation(reduceMotion ? nil : .smoothSpring) { weeks = tallest }
@@ -93,8 +95,10 @@ struct MonthCalendarView: View {
     private func announce(page: Int) {
         if #unavailable(iOS 26) {
             let title = Self.title(of: CalendarViewModel.month(atPage: page))
-            Task {
+            announcement?.cancel()
+            announcement = Task {
                 try? await AppClock.sleep(until: ContinuousClock.now + Self.pageScrolledDelay)
+                guard !Task.isCancelled else { return }
                 Self.postPageScrolled(title)
             }
         }
