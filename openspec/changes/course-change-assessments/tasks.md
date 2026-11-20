@@ -17,8 +17,10 @@
 - [ ] 3.1 Migration: add `assessment` and `online` to `chk_course_change_kind`, give each kind its
   value checks (assessment: both names non-blank; online: no room, optional texts), let `note_zh` /
   `note_en` be set for `note`, `assessment` and `online` only, and convert the 12 rows of the spec by
-  id with the text guard; verify with a migration test that upgrades and downgrades a database seeded
-  with those ids and one with other rows at those ids
+  id with the text guard, and a downgrade that first turns every assessment and online row into its
+  fallback note; verify with a migration test that upgrades and downgrades a database seeded with
+  those ids, one with other rows at those ids, and one with assessment and online rows added after
+  the upgrade
 - [ ] 3.2 Clash rule: `room` and `online` clash with each other, `assessment` with `assessment` only;
   verify with tests of the shared rule function through the portal and the automatic writer
 - [ ] 3.3 Feed: the `kinds` parameter, the note fallback (names; description or the

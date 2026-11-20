@@ -157,7 +157,8 @@ that line.
    to be converted to the owner; deploy on their word. Released apps keep working: they send no
    `kinds` and get notes.
 3. App pull request 1, then 2; both ship in the next iOS release.
-4. Rollback: downgrade the migration and redeploy the previous backend. The new app then receives
+4. Rollback: downgrade the migration, which turns every assessment and online row, the converted
+   ones and any added since, into notes, and redeploy the previous backend. The new app then receives
    notes again (FastAPI ignores the unknown `kinds` parameter) and shows them as before.
 
 ## Open Questions

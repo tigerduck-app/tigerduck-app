@@ -13,9 +13,9 @@ the changes they replace were stored as notes that every released app already sh
 
 - A client lists the kinds it reads beyond `cancelled`, `room`, `start`, `end` and `note` in the
   `kinds` query parameter (`kinds=assessment,online`). Unknown values are ignored.
-- Any change of a kind the request did not list goes out as a `note` with the same id and class
-  days, its text being what that kind carries (an assessment's name; an online change's
-  description, or 線上 / Online).
+- A change of a kind beyond those five that the request did not list goes out as a `note` with the
+  same id and class days, its text being what that kind carries (an assessment's name; an online
+  change's description, or 線上 / Online). The five original kinds always go out as they are.
 - The ETag covers the listed kinds, so a client that starts listing a kind gets the whole term
   again instead of a 304 for the copy it stored before.
 - A later kind follows the same rule: it is added to the parameter's vocabulary, given a note

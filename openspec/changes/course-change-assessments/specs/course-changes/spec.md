@@ -64,9 +64,11 @@ values it does not know.
 
 ### Requirement: Note fallback
 
-A change whose kind the request did not list SHALL be sent as a `note` with the same id and class
-days. An `assessment` SHALL carry its names as the note's texts. An `online` change SHALL carry its
-description, or without one the shared string `course_change_online` in zh-Hant and en.
+An `assessment` or `online` change whose kind the request did not list SHALL be sent as a `note`
+with the same id and class days. An `assessment` SHALL carry its names as the note's texts. An
+`online` change SHALL carry its description, or without one the shared string `course_change_online`
+in zh-Hant and en. `cancelled`, `room`, `start`, `end` and `note` changes SHALL be sent as they are,
+whatever `kinds` lists.
 
 #### Scenario: Released app
 - **WHEN** a client requests without `kinds` and the term holds an assessment named 期中考 / Midterm
@@ -77,6 +79,11 @@ description, or without one the shared string `course_change_online` in zh-Hant 
 #### Scenario: Online without description for a released app
 - **WHEN** a client requests without `kinds` and a change is `online` with no description
 - **THEN** it is a `note` with `note_zh` 線上 and `note_en` Online
+
+#### Scenario: The original kinds never fall back
+- **WHEN** the term holds a cancellation and a room change, and one request lists
+  `kinds=assessment,online` while another lists none
+- **THEN** both responses carry them as `cancelled` and `room`
 
 ### Requirement: ETag by kinds
 
@@ -103,11 +110,18 @@ kind and Chinese text still match:
 
 ### Requirement: Reverting the conversion
 
-The migration's downgrade SHALL restore the converted rows as the notes they were.
+The migration's downgrade SHALL turn every `assessment` and `online` row into the `note` the feed's
+fallback would send for it, and give the 12 converted rows back their original texts, before it
+restores the old kind constraint.
 
 #### Scenario: Rollback
 - **WHEN** the migration is downgraded after converting the 12 rows
 - **THEN** they are notes again with their original texts
+
+#### Scenario: Rollback after new rows
+- **WHEN** an operator added an assessment 小考 / Quiz and an online change without a description
+  after the deploy, and the migration is downgraded
+- **THEN** both are notes, 小考 / Quiz and 線上 / Online, and the downgrade succeeds
 
 ### Requirement: Portal kinds
 
