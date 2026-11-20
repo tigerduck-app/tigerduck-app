@@ -125,6 +125,7 @@ jobs:
               TigerDuckTests/TimeSliderAccessibilityTests
               TigerDuckTests/TLSPinPromptTests
               TigerDuckTests/TodayCourseCardLayoutTests
+              TigerDuckTests/UndatedAssignmentRowScreenTests
               TigerDuckTests/WhatsNewPagerTests
               TigerDuckTests/WidgetLayoutTests
               TigerDuckTests/WidgetSnapshotPictureTests
