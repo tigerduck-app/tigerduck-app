@@ -105,6 +105,8 @@ a parser of outside input:
   `git grep ... origin/dev` or the diff.
 - UI: 375 pt wide, the largest Dynamic Type, dark mode, and the VoiceOver label and state of each
   new control.
+- Portal web UI: render the changed component in headless Chromium at 1280 and 375 px with the
+  most badges and the longest text a cell can hold, and measure that nothing is clipped.
 
 ## Done when
 
