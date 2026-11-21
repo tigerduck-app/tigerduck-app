@@ -55,7 +55,7 @@ struct ConflictLanesView: View {
                     if isOutlined(course) { shape.innerOutline(policy.classTableCourseOutline(course.color)) }
                 }
                 .overlay(alignment: .topLeading) {
-                    Text.courseName(course.displayName, isAssessment: isAssessment)
+                    CourseName(course.displayName, isAssessment: isAssessment)
                         .font(.system(size: cluster.metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
                         .foregroundStyle(policy.classTableCourseTextColor)
                         .lineLimit(label.height > cluster.metrics.cellHeight ? 3 : 2)

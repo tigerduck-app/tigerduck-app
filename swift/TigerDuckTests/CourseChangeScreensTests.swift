@@ -177,5 +177,88 @@ struct CourseChangeScreensTests {
             #expect(labels.first { $0.contains("電子學") }?.contains(assessment) == false)
         }
     }
+
+    @Test("an assessment draws a thick, dense dashed line in its ink under every line of the course name", arguments: [looks[0], looks[1]])
+    func assessmentUnderline(look: Look) async throws {
+        let (ink, text): (UInt32, UInt32) = look.style == .dark ? (AssessmentInk.dark, 0xFFFFFF) : (AssessmentInk.light, 0x000000)
+        let name = CourseName(Self.longName, isAssessment: true)
+            .font(TigerDuckTheme.Typography.headline)
+            .foregroundStyle(Color.textPrimary)
+            .frame(width: 150)
+            .padding(16)
+        let window = try ClubScreensTests.show(name, look: look.club, width: 182, height: 180)
+        defer { window.isHidden = true }
+        try await waitUntil { InkScan(window.picture(), ink: ink, text: text).map { $0.bands.count >= 2 } ?? false }
+        window.saveSnapshot(as: "assessment-underline-\(look.testDescription)")
+        let scan = try #require(InkScan(window.picture(), ink: ink, text: text))
+
+        #expect(scan.bands.count == scan.textLines)
+        for band in scan.bands {
+            #expect(band.height >= 1.6)
+            #expect(band.dashes >= max(2, Int(band.width / 7)))
+        }
+        #expect(scan.mostCommonInk.map { InkScan.near($0, ink, by: 3) } == true)
+    }
+}
+
+/// The lines of text and the bands and dashes of an ink in a picture, in points.
+private struct InkScan {
+    struct Band {
+        let height: CGFloat
+        let width: CGFloat
+        let dashes: Int
+    }
+
+    let bands: [Band]
+    let textLines: Int
+    let mostCommonInk: UInt32?
+
+    init?(_ picture: UIImage, ink: UInt32, text: UInt32) {
+        guard let image = picture.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let (width, height, scale) = (image.width, image.height, picture.scale)
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return context != nil
+        }
+        guard drawn else { return nil }
+        func color(_ x: Int, _ y: Int) -> UInt32 {
+            let index = (y * width + x) * 4
+            return UInt32(bytes[index]) << 16 | UInt32(bytes[index + 1]) << 8 | UInt32(bytes[index + 2])
+        }
+        func redness(_ color: UInt32) -> Int { Int(color >> 16) - Int((color >> 8) & 0xFF) }
+        let inkColumns = (0..<height).map { y in
+            (0..<width).filter { Self.near(color($0, y), ink, by: 40) && abs(redness(color($0, y)) - redness(ink)) <= 20 }
+        }
+        let textRows = (0..<height).filter { y in
+            (0..<width).contains { Self.near(color($0, y), text, by: 60) }
+        }
+        let inkRows = (0..<height).filter { inkColumns[$0].count >= 3 }
+        var counts: [UInt32: Int] = [:]
+        bands = Self.runs(of: inkRows, joining: 1).map { rows in
+            let columns = inkColumns[rows[rows.count / 2]]
+            for x in columns { counts[color(x, rows[rows.count / 2]), default: 0] += 1 }
+            return Band(
+                height: CGFloat(rows.count) / scale, width: CGFloat(columns.last! - columns.first! + 1) / scale,
+                dashes: Self.runs(of: columns, joining: 1).count
+            )
+        }
+        textLines = Self.runs(of: textRows.filter { !inkRows.contains($0) }, joining: Int(3 * scale)).count
+        mostCommonInk = counts.max { $0.value < $1.value }?.key
+    }
+
+    static func near(_ color: UInt32, _ other: UInt32, by tolerance: Int) -> Bool {
+        [16, 8, 0].allSatisfy { abs(Int((color >> $0) & 0xFF) - Int((other >> $0) & 0xFF)) <= tolerance }
+    }
+
+    private static func runs(of values: [Int], joining gap: Int) -> [[Int]] {
+        values.reduce(into: [[Int]]()) { runs, value in
+            if let last = runs.last?.last, value - last <= gap + 1 { runs[runs.count - 1].append(value) } else { runs.append([value]) }
+        }
+    }
 }
 #endif

@@ -22,7 +22,7 @@ struct TimetableCellMetrics {
     }
 }
 
-extension Text {
+extension View {
     func timetableBlockName(
         metrics: TimetableCellMetrics, policy: VisualStylePolicy, lineLimit: Int, isCancelled: Bool = false
     ) -> some View {
