@@ -51,11 +51,13 @@ struct CourseChangesTests {
         CourseTimeSlot.buildSlots(from: [course()], weekday: 4, on: day, changes: changes)
     }
 
-    private static func withStoredFeed<T>(_ data: Data, _ body: () throws -> T) rethrows -> T {
-        let saved = Defaults[.courseChangesCache]
-        defer { Defaults[.courseChangesCache] = saved }
-        Defaults[.courseChangesCache] = data
-        return try body()
+    private static func withStoredFeed<T>(_ data: Data, _ body: () throws -> T) async rethrows -> T {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.courseChangesCache]
+            defer { Defaults[.courseChangesCache] = saved }
+            Defaults[.courseChangesCache] = data
+            return try body()
+        }
     }
 
     @Test func decodesTheFeedAndDropsUnknownKindsAndIncompleteRows() throws {
@@ -334,7 +336,7 @@ struct CourseChangesTests {
         #expect(!json.contains("roomChanged") && !json.contains("timeChanged"))
     }
 
-    @Test func theScheduleSentToTheServerSkipsACancelledClassAndUsesTheChangedStart() {
+    @Test func theScheduleSentToTheServerSkipsACancelledClassAndUsesTheChangedStart() async {
         let data = Self.feed([
             Self.row(1, "cancelled", periods: ["7", "8"]),
             Self.row(2, "start", periods: ["2", "3", "4"], values: ["start": "10:00"]),
@@ -348,7 +350,7 @@ struct CourseChangesTests {
             term: CourseSelectionService.semesterCode(on: Self.thursday, calendar: .empty)
         )
 
-        let events = Self.withStoredFeed(data) {
+        let events = await Self.withStoredFeed(data) {
             ScheduleSyncService.buildEvents(
                 inputs: inputs, now: Self.thursday, horizonEnd: Self.thursday.addingTimeInterval(48 * 3600)
             )
@@ -688,130 +690,138 @@ struct CourseChangesTests {
     }
 
     @Test func theStoreAsksForAssessmentsAndOnlineClassesAndReplacesTheNotesAnOlderBuildStored() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
-        }
-        Defaults[.courseChangesCache] = Self.feed([Self.row(1, "note", values: ["note_zh": "期中考", "note_en": "期中考"])])
-        Defaults[.courseChangesETag] = #"W/"notes""#
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.feedURL(base)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
-        )
-        SettingsAPIStub.enqueue(
-            .init(
-                statusCode: 200, body: Self.feed([Self.row(1, "assessment", values: Self.midterm)]),
-                headerFields: ["ETag": #"W/"kinds""#]
-            ),
-            for: url
-        )
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            Defaults[.courseChangesCache] = Self.feed([Self.row(1, "note", values: ["note_zh": "期中考", "note_en": "期中考"])])
+            Defaults[.courseChangesETag] = #"W/"notes""#
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            SettingsAPIStub.enqueue(
+                .init(
+                    statusCode: 200, body: Self.feed([Self.row(1, "assessment", values: Self.midterm)]),
+                    headerFields: ["ETag": #"W/"kinds""#]
+                ),
+                for: url
+            )
 
-        #expect(await store.refresh())
-        #expect(SettingsAPIStub.requests(for: url).map { $0.url?.query } == ["kinds=assessment,online"])
-        let stored = CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday)
-        #expect(stored.map(\.kind) == [.assessment])
-        #expect(Defaults[.courseChangesETag] == #"W/"kinds""#)
+            #expect(await store.refresh())
+            #expect(SettingsAPIStub.requests(for: url).map { $0.url?.query } == ["kinds=assessment,online"])
+            let stored = CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday)
+            #expect(stored.map(\.kind) == [.assessment])
+            #expect(Defaults[.courseChangesETag] == #"W/"kinds""#)
+        }
     }
 
     @Test func theStoreSendsItsETagKeepsItsCopyOnA304AndReplacesItOnA200() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            Defaults[.courseChangesCache] = Data()
+            Defaults[.courseChangesETag] = ""
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            let first = Self.feed([Self.row(1, "cancelled")])
+
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: first, headerFields: ["ETag": #"W/"a""#]), for: url)
+            #expect(await store.refresh())
+            #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+
+            SettingsAPIStub.enqueue(.init(statusCode: 304, body: Data()), for: url)
+            #expect(await store.refresh() == false)
+            SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
+            #expect(await store.refresh() == false)
+            #expect(Defaults[.courseChangesCache] == first)
+
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), headerFields: ["ETag": #"W/"b""#]), for: url)
+            #expect(await store.refresh())
+            #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).isEmpty)
+            #expect(Defaults[.courseChangesETag] == #"W/"b""#)
+
+            let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
+            #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
+            #expect(SettingsAPIStub.requests(for: url).allSatisfy { $0.cachePolicy == .reloadIgnoringLocalCacheData })
         }
-        Defaults[.courseChangesCache] = Data()
-        Defaults[.courseChangesETag] = ""
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.feedURL(base)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
-        )
-        let first = Self.feed([Self.row(1, "cancelled")])
-
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: first, headerFields: ["ETag": #"W/"a""#]), for: url)
-        #expect(await store.refresh())
-        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
-
-        SettingsAPIStub.enqueue(.init(statusCode: 304, body: Data()), for: url)
-        #expect(await store.refresh() == false)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
-        #expect(await store.refresh() == false)
-        #expect(Defaults[.courseChangesCache] == first)
-
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), headerFields: ["ETag": #"W/"b""#]), for: url)
-        #expect(await store.refresh())
-        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).isEmpty)
-        #expect(Defaults[.courseChangesETag] == #"W/"b""#)
-
-        let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
-        #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
-        #expect(SettingsAPIStub.requests(for: url).allSatisfy { $0.cachePolicy == .reloadIgnoringLocalCacheData })
     }
 
     @Test func aStoredFeedThisBuildCannotReadIsFetchedAgain() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
-        }
-        Defaults[.courseChangesCache] = Data("not a feed".utf8)
-        Defaults[.courseChangesETag] = #"W/"a""#
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.feedURL(base)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
-        )
-        SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), headerFields: ["ETag": #"W/"a""#]),
-            for: url
-        )
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            Defaults[.courseChangesCache] = Data("not a feed".utf8)
+            Defaults[.courseChangesETag] = #"W/"a""#
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), headerFields: ["ETag": #"W/"a""#]),
+                for: url
+            )
 
-        #expect(await store.refresh())
-        #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil])
-        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+            #expect(await store.refresh())
+            #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil])
+            #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+        }
     }
 
     @Test func aRefreshAnEndpointChangeReplacedLeavesTheNewOneToBeJoined() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            let old = SettingsAPIStub.ReplyGate()
+            let new = SettingsAPIStub.ReplyGate()
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), gate: old), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), gate: new), for: url)
+
+            let first = Task { await store.refresh() }
+            try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+            store.endpointDidChange()
+            try await waitUntil { SettingsAPIStub.requests(for: url).count == 2 }
+            old.open()
+            _ = await first.value
+            let joined = Task { await store.refresh() }
+            new.open()
+
+            #expect(await joined.value)
+            #expect(SettingsAPIStub.requests(for: url).count == 2)
         }
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = Self.feedURL(base)
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
-        )
-        let old = SettingsAPIStub.ReplyGate()
-        let new = SettingsAPIStub.ReplyGate()
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), gate: old), for: url)
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), gate: new), for: url)
-
-        let first = Task { await store.refresh() }
-        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
-        store.endpointDidChange()
-        try await waitUntil { SettingsAPIStub.requests(for: url).count == 2 }
-        old.open()
-        _ = await first.value
-        let joined = Task { await store.refresh() }
-        new.open()
-
-        #expect(await joined.value)
-        #expect(SettingsAPIStub.requests(for: url).count == 2)
     }
 
     @Test func theStoreAsksNothingBeforeOnboardingEnds() async {
