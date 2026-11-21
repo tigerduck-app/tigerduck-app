@@ -260,8 +260,9 @@ struct InkScan {
             return context != nil
         }
         guard drawn else { return nil }
-        let colors = (0..<width * height).map { index in
-            UInt32(bytes[index * 4]) << 16 | UInt32(bytes[index * 4 + 1]) << 8 | UInt32(bytes[index * 4 + 2])
+        let colors = (0..<width * height).map { (index: Int) -> UInt32 in
+            let red = UInt32(bytes[index * 4]), green = UInt32(bytes[index * 4 + 1]), blue = UInt32(bytes[index * 4 + 2])
+            return red << 16 | green << 8 | blue
         }
         return (width, height, colors)
     }
