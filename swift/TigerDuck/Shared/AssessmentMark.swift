@@ -8,6 +8,10 @@ nonisolated enum AssessmentInk {
     static let dashLength: CGFloat = 4
     static let gapLength: CGFloat = 2
     static let underlineCopyOffsets: [CGFloat] = [0, 0.4, 0.8]
+
+    static func hex(isAssessment: Bool, onDark: Bool) -> UInt32? {
+        isAssessment ? (onDark ? dark : light) : nil
+    }
 }
 
 /// A course name; with an assessment ink, a dashed line in that ink under each of its lines.

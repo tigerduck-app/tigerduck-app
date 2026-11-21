@@ -86,7 +86,7 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
 
     static func changedClasses(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
         CourseMeeting.meetings(of: course, on: date, changes: changes)
-            .filter { meeting in meeting.changes.contains { $0.kind != .note && $0.kind != .assessment } }
+            .filter { meeting in meeting.changes.contains { $0.kind != .note } }
             .flatMap { $0.slots() }
     }
 

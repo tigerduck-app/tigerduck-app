@@ -76,7 +76,9 @@ enum WatchPayloadEncoder {
             return ClassTimeline.runs(of: periodIds, order: order).compactMap { run -> WatchCourse? in
                 let classes = Dictionary(
                     grouping: changed.filter { !$0.periods.isEmpty && run.contains($0.periods[0]) }, by: \.day
-                ).mapValues { $0.compactMap { meeting($0.periods, change: $0) } }
+                )
+                .filter { $0.value.contains(where: \.changesTheTimetable) }
+                .mapValues { $0.compactMap { meeting($0.periods, change: $0) } }
                 return meeting(run, classes: classes.isEmpty ? nil : classes)
             }
         }

@@ -58,7 +58,7 @@ enum WidgetSnapshotBuilder {
     static func snapshotMeetingChanges(of course: SDCourse, changes: CourseChanges) -> [SnapshotCourseChange] {
         changes.days(courseNo: course.courseNo).flatMap { day in
             CourseTimeSlot.changedMeetings(of: course, on: day, changes: changes)
-                .filter { $0.isCancelled || $0.hasChangedRoom || $0.hasChangedTime }
+                .filter { $0.isCancelled || $0.hasChangedRoom || $0.hasChangedTime || $0.assessment != nil }
                 .map(snapshotChange)
         }
     }
@@ -70,7 +70,8 @@ enum WidgetSnapshotBuilder {
             cancelled: slot.isCancelled,
             room: slot.hasChangedRoom ? slot.room : nil,
             start: slot.originalStart == nil ? nil : slot.start.timeString,
-            end: slot.originalEnd == nil ? nil : slot.end.timeString
+            end: slot.originalEnd == nil ? nil : slot.end.timeString,
+            assessment: slot.assessment == nil ? nil : true
         )
     }
 

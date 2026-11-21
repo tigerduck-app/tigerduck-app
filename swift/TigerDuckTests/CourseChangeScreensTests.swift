@@ -201,7 +201,7 @@ struct CourseChangeScreensTests {
     }
 }
 
-private struct InkScan {
+struct InkScan {
     struct Band {
         let height: CGFloat
         let width: CGFloat
@@ -212,31 +212,24 @@ private struct InkScan {
     let textLines: Int
     let mostCommonInk: UInt32?
 
-    init?(_ picture: UIImage, ink: UInt32, text: UInt32) {
-        guard let image = picture.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
-        let (width, height, scale) = (image.width, image.height, picture.scale)
-        var bytes = [UInt8](repeating: 0, count: width * height * 4)
-        let drawn = bytes.withUnsafeMutableBytes { buffer in
-            let context = CGContext(
-                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
-                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-            )
-            context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
-            return context != nil
-        }
-        guard drawn else { return nil }
-        func color(_ x: Int, _ y: Int) -> UInt32 {
-            let index = (y * width + x) * 4
-            return UInt32(bytes[index]) << 16 | UInt32(bytes[index + 1]) << 8 | UInt32(bytes[index + 2])
-        }
+    init?(_ picture: UIImage, ink: UInt32, text: UInt32? = nil, plain: UIImage? = nil) {
+        guard let drawn = Self.colors(of: picture) else { return nil }
+        let (width, height, colors) = drawn
+        let plainColors = plain.flatMap { Self.colors(of: $0) }.flatMap { $0.width == width && $0.height == height ? $0.colors : nil }
+        if plain != nil && plainColors == nil { return nil }
+        func color(_ x: Int, _ y: Int) -> UInt32 { colors[y * width + x] }
         func redness(_ color: UInt32) -> Int { Int(color >> 16) - Int((color >> 8) & 0xFF) }
-        let inkColumns = (0..<height).map { y in
-            (0..<width).filter { Self.near(color($0, y), ink, by: 40) && abs(redness(color($0, y)) - redness(ink)) <= 20 }
+        func isInk(_ x: Int, _ y: Int) -> Bool {
+            let pixel = color(x, y)
+            return Self.near(pixel, ink, by: 40) && abs(redness(pixel) - redness(ink)) <= 20
+                && plainColors.map { !Self.near($0[y * width + x], pixel, by: 8) } ?? true
         }
+        let inkColumns = (0..<height).map { y in (0..<width).filter { isInk($0, y) } }
         let textRows = (0..<height).filter { y in
-            (0..<width).contains { Self.near(color($0, y), text, by: 60) }
+            text.map { text in (0..<width).contains { Self.near(color($0, y), text, by: 60) } } ?? false
         }
         let inkRows = (0..<height).filter { inkColumns[$0].count >= 3 }
+        let scale = picture.scale
         var counts: [UInt32: Int] = [:]
         bands = Self.runs(of: inkRows, joining: 1).map { rows in
             let columns = inkColumns[rows[rows.count / 2]]
@@ -252,6 +245,26 @@ private struct InkScan {
 
     static func near(_ color: UInt32, _ other: UInt32, by tolerance: Int) -> Bool {
         [16, 8, 0].allSatisfy { abs(Int((color >> $0) & 0xFF) - Int((other >> $0) & 0xFF)) <= tolerance }
+    }
+
+    private static func colors(of picture: UIImage) -> (width: Int, height: Int, colors: [UInt32])? {
+        guard let image = picture.cgImage, let space = CGColorSpace(name: CGColorSpace.sRGB) else { return nil }
+        let (width, height) = (image.width, image.height)
+        var bytes = [UInt8](repeating: 0, count: width * height * 4)
+        let drawn = bytes.withUnsafeMutableBytes { buffer in
+            let context = CGContext(
+                data: buffer.baseAddress, width: width, height: height, bitsPerComponent: 8, bytesPerRow: width * 4,
+                space: space, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+            )
+            context?.draw(image, in: CGRect(x: 0, y: 0, width: width, height: height))
+            return context != nil
+        }
+        guard drawn else { return nil }
+        let colors = (0..<width * height).map { (index: Int) -> UInt32 in
+            let red = UInt32(bytes[index * 4]), green = UInt32(bytes[index * 4 + 1]), blue = UInt32(bytes[index * 4 + 2])
+            return red << 16 | green << 8 | blue
+        }
+        return (width, height, colors)
     }
 
     private static func runs(of values: [Int], joining gap: Int) -> [[Int]] {

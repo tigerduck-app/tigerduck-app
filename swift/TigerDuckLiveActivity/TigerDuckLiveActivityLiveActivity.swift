@@ -65,6 +65,8 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
 private struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             // all the slack between them. Do not apply .fixedSize() to the timer or its
@@ -89,7 +91,7 @@ private struct LockScreenView: View {
             }
             .frame(maxWidth: .infinity)
 
-            Text(snapshot.title)
+            title(snapshot, on: colorScheme)
                 .font(.title2.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -113,7 +115,7 @@ private struct ExpandedBottomView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(snapshot.title)
+            title(snapshot, on: .dark)
                 .font(.title2.bold())
                 .foregroundStyle(.primary)
                 .lineLimit(1)
@@ -291,6 +293,11 @@ private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
 /// The app's change ink: a value the school changed for the day.
 private func changeInk(_ scheme: ColorScheme) -> Color {
     scheme == .dark ? hexColor(0xFDBA74) : hexColor(0x7C2D12)
+}
+
+private func title(_ snapshot: LiveActivitySnapshot, on scheme: ColorScheme) -> CourseName {
+    let ink = AssessmentInk.hex(isAssessment: snapshot.assessment == true, onDark: scheme == .dark)
+    return CourseName(snapshot.title, assessmentInk: ink.map { hexColor(Int($0)) })
 }
 
 private extension View {

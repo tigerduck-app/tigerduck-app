@@ -29,6 +29,7 @@ struct NameRoomLine: View {
     let room: String
     var roomChanged = false
     var isCancelled = false
+    var assessmentInk: Color? = nil
     let nameFont: Font
     let roomFont: Font
     let ink: Color
@@ -36,7 +37,7 @@ struct NameRoomLine: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text(name)
+            CourseName(name, assessmentInk: assessmentInk)
                 .font(nameFont)
                 .strikethrough(isCancelled)
                 .lineLimit(1)
@@ -106,7 +107,7 @@ extension View {
                     GeometryReader { geometry in
                         Rectangle()
                             .fill(tile.accent)
-                            .frame(width: geometry.size.width * min(max(progress, 0), 1), height: 3)
+                            .frame(width: geometry.size.width * min(max(progress, 0), 1), height: WidgetTile.bottomBarHeight)
                             .frame(maxHeight: .infinity, alignment: .bottom)
                     }
                     .accessibilityHidden(true)
