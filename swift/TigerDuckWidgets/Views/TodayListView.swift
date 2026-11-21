@@ -184,6 +184,7 @@ struct TodayMediumList: View {
                 ink: tile.ink, changeInk: palette.changeInk
             )
             .padding(.horizontal, 8)
+            .padding(.bottom, item.progress == nil ? 0 : WidgetTile.bottomBarHeight)
             .frame(maxHeight: .infinity)
             .classTile(tile, radius: 6, progress: item.progress, outline: 1.5, bottomBar: true)
         }

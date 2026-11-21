@@ -92,6 +92,8 @@ struct WidgetPalette {
 }
 
 struct WidgetTile {
+    static let bottomBarHeight: CGFloat = 3
+
     let fill: Color
     let ink: Color
     let secondaryInk: Color

@@ -107,7 +107,7 @@ extension View {
                     GeometryReader { geometry in
                         Rectangle()
                             .fill(tile.accent)
-                            .frame(width: geometry.size.width * min(max(progress, 0), 1), height: 3)
+                            .frame(width: geometry.size.width * min(max(progress, 0), 1), height: WidgetTile.bottomBarHeight)
                             .frame(maxHeight: .infinity, alignment: .bottom)
                     }
                     .accessibilityHidden(true)

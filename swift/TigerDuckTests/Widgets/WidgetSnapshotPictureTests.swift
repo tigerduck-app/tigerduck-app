@@ -107,16 +107,24 @@ struct WidgetSnapshotPictureTests {
                 ),
                 "CS3001": SnapshotCourseChange(day: "2026-11-11", periods: ["6", "7"], cancelled: false, room: online, start: nil, end: nil),
             ]
-            let courses = Fixtures.week().map { course in
-                changes[course.courseNo].map {
-                    SnapshotCourse(
-                        courseNo: course.courseNo, displayName: course.displayName, classroom: course.classroom,
-                        schedule: course.schedule, colorHex: course.colorHex, changes: [$0], meetingChanges: [$0]
-                    )
-                } ?? course
+            func courses(_ changes: [String: SnapshotCourseChange]) -> [SnapshotCourse] {
+                Fixtures.week().map { course in
+                    changes[course.courseNo].map {
+                        SnapshotCourse(
+                            courseNo: course.courseNo, displayName: course.displayName, classroom: course.classroom,
+                            schedule: course.schedule, colorHex: course.colorHex, changes: [$0], meetingChanges: [$0]
+                        )
+                    } ?? course
+                }
             }
+            let plain = try await Self.show(
+                shot, family: family, look: look, snapshot: Fixtures.snapshot(courses: courses(changes.filter { $0.key != "CS2001" })),
+                now: Fixtures.wednesday(11, 32), showing: "資料結構與演算法"
+            )
+            let plainPicture = plain.picture()
+            plain.isHidden = true
             let window = try await Self.show(
-                shot, family: family, look: look, snapshot: Fixtures.snapshot(courses: courses), now: Fixtures.wednesday(11, 32),
+                shot, family: family, look: look, snapshot: Fixtures.snapshot(courses: courses(changes)), now: Fixtures.wednesday(11, 32),
                 showing: "資料結構與演算法, \(assessment)"
             )
             defer { window.isHidden = true }
@@ -125,6 +133,13 @@ struct WidgetSnapshotPictureTests {
             let texts = exposedAccessibilityTexts(in: window)
             #expect(texts.contains { $0.contains(online) } == (shot != .nextSmall))
             #expect(!texts.contains { $0.contains("計算機網路概論, \(assessment)") })
+            let ink = look.style == .dark ? AssessmentInk.dark : AssessmentInk.light
+            let scan = try #require(InkScan(window.picture(), ink: ink, plain: plainPicture))
+            #expect(!scan.bands.isEmpty)
+            for band in scan.bands {
+                #expect(band.height >= 1.2)
+                #expect(band.dashes >= max(2, Int(band.width / 7)))
+            }
         }
     }
 
