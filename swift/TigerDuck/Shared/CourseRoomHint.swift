@@ -19,3 +19,11 @@ enum CourseRoomHint {
         return shortRoomCode.firstMatch(in: room, range: range) != nil
     }
 }
+
+extension CourseRoomHint {
+    static func roomLine(meeting: CourseTimeSlot?, hint: String?, showsRooms: Bool) -> (room: String, isChanged: Bool)? {
+        guard showsRooms else { return nil }
+        if let meeting, meeting.hasChangedRoom, !meeting.isCancelled { return (meeting.room, true) }
+        return hint.map { ($0, false) }
+    }
+}

@@ -5,10 +5,10 @@ struct ConflictLanesView: View {
     let cluster: ConflictCluster
     let diffWithoutColor: Bool
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppPreferences.self) private var preferences
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
-    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
+    private var policy: VisualStylePolicy { preferences.visualStylePolicy }
 
     var body: some View {
         GeometryReader { proxy in
@@ -42,6 +42,7 @@ struct ConflictLanesView: View {
         let label = runs.max { $0.width * $0.height < $1.width * $1.height } ?? .zero
         let hasBadge = cluster.showsBadge(for: course)
         let ignoresAssignments = cluster.showsIgnoredMark(for: course)
+        let isAssessment = cluster.assessed.contains(course.courseNo)
         let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
         let firstPeriod = cluster.firstPeriod(of: segment)
 
@@ -54,7 +55,7 @@ struct ConflictLanesView: View {
                     if isOutlined(course) { shape.innerOutline(policy.classTableCourseOutline(course.color)) }
                 }
                 .overlay(alignment: .topLeading) {
-                    Text(course.displayName)
+                    CourseName(course.displayName, isAssessment: isAssessment)
                         .font(.system(size: cluster.metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
                         .foregroundStyle(policy.classTableCourseTextColor)
                         .lineLimit(label.height > cluster.metrics.cellHeight ? 3 : 2)
@@ -77,7 +78,9 @@ struct ConflictLanesView: View {
                  String(format: String(localized: "a11y_timetable_cell"),
                         AppConstants.Periods.shortWeekdayLabel(cluster.weekday),
                         firstPeriod?.displayLabel ?? cluster.periodId,
-                        spokenCourse(course, hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments)))
+                        spokenCourse(
+                            course, isAssessment: isAssessment, hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments
+                        )))
         )
         .courseEditMenu(isEditable: cluster.viewModel.shownPerson == nil) {
             TimetableCourseMenu(course: course, editor: cluster.viewModel.editor)

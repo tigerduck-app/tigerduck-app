@@ -106,7 +106,9 @@ struct MacClassTableGrid: View {
             emptyCell.frame(height: cellHeight)
         case let .solo(course, spanCount):
             MacClassTableCourseCell(
-                viewModel: viewModel, course: course, roomHint: roomHint(course, weekday: weekday, periodId: periodId)
+                viewModel: viewModel, course: course, roomHint: roomHint(course, weekday: weekday, periodId: periodId),
+                showsRooms: app.preferences.showClassroomInClassTable,
+                meeting: viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: AppClock.now())
             )
                 .frame(height: blockHeight(spanCount))
                 .onTapGesture { viewModel.selectCourse(course, weekday: weekday, periodId: periodId) }
@@ -160,14 +162,17 @@ struct MacClassTableGrid: View {
     ) -> some View {
         let bottom = max(combinedSpan - offset - span, 0)
         let ignored = viewModel.editor.ignoresAssignments(of: course.courseNo)
+        let meeting = viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: AppClock.now())
         VStack(spacing: rowSpacing) {
             if offset > 0 {
                 Color.clear.frame(height: blockHeight(offset))
             }
-            MacClassTableCourseCell(viewModel: viewModel, course: course)
+            MacClassTableCourseCell(viewModel: viewModel, course: course, meeting: meeting)
                 .frame(height: blockHeight(span))
                 .onTapGesture { viewModel.selectCourse(course, weekday: weekday, periodId: periodId) }
-                .accessibilityLabel(Text(MacClassTableCourseCell.spokenName(course, ignoresAssignments: ignored)))
+                .accessibilityLabel(Text(spokenCourse(
+                    course, isAssessment: meeting?.assessment != nil, hasAssignment: false, ignoresAssignments: ignored
+                )))
             if bottom > 0 {
                 Color.clear.frame(height: blockHeight(bottom))
             }

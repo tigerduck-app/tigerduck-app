@@ -50,6 +50,7 @@ extension Color {
     static let badgeRedText = adaptive(light: Color(hex: 0xD70015), dark: Color(hex: 0xFF7A72))
     /// A value the school changed for one day, such as a moved room or a new start time.
     static let changeInk = adaptive(light: Color(hex: 0x7C2D12), dark: Color(hex: 0xFDBA74))
+    static let assessmentInk = adaptive(light: Color(hex: UInt(AssessmentInk.light)), dark: Color(hex: UInt(AssessmentInk.dark)))
     static let rowBand = Color.primary.opacity(0.08)
     static let rowBandAlternate = Color.primary.opacity(0.04)
 
@@ -78,5 +79,18 @@ extension Color {
             UInt32((max(0, min(1, components[min(index, components.count - 1)])) * 255).rounded())
         }
         return (byte(0) << 16) | (byte(1) << 8) | byte(2)
+    }
+}
+
+extension CourseName {
+    init(_ name: String, isAssessment: Bool) {
+        self.init(name, assessmentInk: isAssessment ? .assessmentInk : nil)
+    }
+}
+
+extension Text {
+    static func changedRoom(_ room: String) -> Text {
+        Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(room).fontWeight(.semibold))")
+            .foregroundStyle(Color.changeInk)
     }
 }

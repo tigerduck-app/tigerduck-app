@@ -8,6 +8,7 @@ struct TimetableCell: View {
     let weekday: Int
     let periodId: String
     let meeting: CourseTimeSlot?
+    let assessed: Set<String>
     let showsAssignmentBadges: Bool
     let differentiateWithoutColor: Bool?
     let drawsPeriodTiles: Bool
@@ -82,7 +83,7 @@ struct TimetableCell: View {
                     cluster: ConflictCluster(
                         viewModel: viewModel, showsAssignmentBadges: showsAssignmentBadges, segments: segments,
                         laneCount: laneCount, weekday: weekday, periodId: periodId, metrics: metrics,
-                        withClubs: withClubs
+                        withClubs: withClubs, assessed: assessed
                     ),
                     differentiateWithoutColorOverride: differentiateWithoutColor
                 )

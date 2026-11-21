@@ -21,7 +21,7 @@ struct TimetableGridView: View {
     var showsThisWeek = true
     var switchCount = 0
     var onSwitch: ((_ before: TimetableRowTops, _ after: TimetableRowTops) -> Void)? = nil
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppPreferences.self) private var preferences
 
     static let columnSpacing: CGFloat = 3
     private let rowSpacing: CGFloat = 3
@@ -31,7 +31,7 @@ struct TimetableGridView: View {
     @ScaledMetric(relativeTo: .caption2) private var periodTimeSize: CGFloat = 9
     @ScaledMetric(relativeTo: .caption2) private var periodLabelSize: CGFloat = 12
 
-    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
+    private var policy: VisualStylePolicy { preferences.visualStylePolicy }
     private var drawsPeriodTiles: Bool { policy.classTableGridStyle == .periodTiles }
 
     private var cellHeight: CGFloat { max(52, scaledCellHeight) }
@@ -42,7 +42,7 @@ struct TimetableGridView: View {
     private var metrics: TimetableCellMetrics {
         TimetableCellMetrics(
             cellHeight: cellHeight, rowSpacing: rowSpacing,
-            courseNameSize: courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(app.preferences.courseCardFontScale)),
+            courseNameSize: courseNameBaseSize * CGFloat(CourseCardFontScale.renderScale(preferences.courseCardFontScale)),
             badgeIconSize: badgeIconSize
         )
     }
@@ -73,13 +73,16 @@ struct TimetableGridView: View {
                 } cell: { weekday in
                     let role = viewModel.grid.cellRole(weekday: weekday, periodIndex: periodIndex, withClubs: withClubs)
                     let meeting = thisWeek ? changedMeeting(role, weekday: weekday, periodId: period.id, now: now) : nil
+                    let assessed = thisWeek
+                        ? assessedConflictCourses(role, weekday: weekday, from: periodIndex, in: periods, now: now)
+                        : []
                     let key = TimetableCellTransitionID.of(
-                        role, weekday: weekday, periodId: period.id, meeting: meeting,
-                        showsRooms: app.preferences.showClassroomInClassTable
+                        role, weekday: weekday, periodId: period.id, meeting: meeting, assessed: assessed,
+                        showsRooms: preferences.showClassroomInClassTable
                     )
                     TimetableCell(
                         viewModel: viewModel, role: role, key: key, weekday: weekday, periodId: period.id,
-                        meeting: meeting, showsAssignmentBadges: showsAssignmentBadges,
+                        meeting: meeting, assessed: assessed, showsAssignmentBadges: showsAssignmentBadges,
                         differentiateWithoutColor: differentiateWithoutColor, drawsPeriodTiles: drawsPeriodTiles,
                         metrics: metrics, withClubs: withClubs
                     )
@@ -175,9 +178,23 @@ struct TimetableGridView: View {
         _ role: ClassTableGrid.CellRole, weekday: Int, periodId: String, now: Date
     ) -> CourseTimeSlot? {
         // A conflict cell lays its courses out in lanes by their timetable spans, which a changed
-        // time would break, so conflicting courses keep the weekly look.
+        // time would break, so conflicting courses keep the weekly look apart from an assessment.
         guard case .solo(let course, _) = role else { return nil }
         return viewModel.changedMeeting(of: course, weekday: weekday, at: periodId, today: now)
+    }
+
+    private func assessedConflictCourses(
+        _ role: ClassTableGrid.CellRole, weekday: Int, from periodIndex: Int, in periods: [TimetablePeriod], now: Date
+    ) -> Set<String> {
+        let segments: [(course: CourseStore.Course, offset: Int)] = switch role {
+        case let .conflictStart(a, _, offsetA, b, _, offsetB, _): [(a, offsetA), (b, offsetB)]
+        case let .conflictMany(segments, _, _): segments.map { ($0.course, $0.offset) }
+        case .empty, .skip, .solo: []
+        }
+        return Set(segments.filter { course, offset in
+            guard let period = periods[safe: periodIndex + offset] else { return false }
+            return viewModel.changedMeeting(of: course, weekday: weekday, at: period.id, today: now)?.assessment != nil
+        }.map(\.course.courseNo))
     }
 
 }
@@ -264,7 +281,8 @@ private struct TimetableHeaderLayout: Layout {
 
 enum TimetableCellTransitionID {
     static func of(
-        _ role: ClassTableGrid.CellRole, weekday: Int, periodId: String, meeting: CourseTimeSlot?, showsRooms: Bool
+        _ role: ClassTableGrid.CellRole, weekday: Int, periodId: String, meeting: CourseTimeSlot?,
+        assessed: Set<String> = [], showsRooms: Bool
     ) -> String {
         func shown(_ course: CourseStore.Course) -> String { "\(course.courseNo)|\(course.displayName)" }
         switch role {
@@ -276,13 +294,16 @@ enum TimetableCellTransitionID {
             let room = showsRooms
                 ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId) ?? ""
                 : ""
-            let change = meeting.map { "\($0.isCancelled)|\($0.room)|\($0.start)|\($0.end)|\($0.notes.count)" } ?? ""
+            let change = meeting.map {
+                "\($0.isCancelled)|\($0.room)|\($0.start)|\($0.end)|\($0.notes.count)|\($0.assessment != nil)"
+            } ?? ""
             return "solo \(spanCount) \(shown(course))|\(room)|\(change)"
         case let .conflictStart(courseA, spanA, offsetA, courseB, spanB, offsetB, combinedSpan):
-            return "pair \(combinedSpan) \(spanA) \(offsetA) \(shown(courseA)) \(spanB) \(offsetB) \(shown(courseB))"
+            let pair = "\(combinedSpan) \(spanA) \(offsetA) \(shown(courseA)) \(spanB) \(offsetB) \(shown(courseB))"
+            return "pair \(pair) \(assessed.sorted())"
         case let .conflictMany(segments, combinedSpan, laneCount):
             let lanes = segments.map { "\($0.span) \($0.offset) \($0.lane) \(shown($0.course))" }
-            return "lanes \(combinedSpan) \(laneCount) " + lanes.joined(separator: " ")
+            return "lanes \(combinedSpan) \(laneCount) " + lanes.joined(separator: " ") + " \(assessed.sorted())"
         }
     }
 }

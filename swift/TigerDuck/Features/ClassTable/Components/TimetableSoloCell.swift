@@ -14,19 +14,19 @@ struct TimetableSoloCell: View {
     let metrics: TimetableCellMetrics
     let withClubs: Bool
 
-    @Environment(AppEnvironment.self) private var app
+    @Environment(AppPreferences.self) private var preferences
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
-    private var policy: VisualStylePolicy { app.preferences.visualStylePolicy }
+    private var policy: VisualStylePolicy { preferences.visualStylePolicy }
 
     var body: some View {
         let hasBadge = showsAssignmentBadges && viewModel.hasAssignment(for: course.courseNo)
         let ignoresAssignments = showsAssignmentBadges && viewModel.editor.ignoresAssignments(of: course.courseNo)
         let totalHeight = metrics.height(spanning: spanCount)
-        let roomHint = app.preferences.showClassroomInClassTable
+        let roomHint = preferences.showClassroomInClassTable
             ? CourseRoomHint.room(for: course, weekday: weekday, periodId: periodId)
             : nil
-        let bottomLine = BlockLine(meeting: meeting, roomHint: roomHint, showsRooms: app.preferences.showClassroomInClassTable)
+        let bottomLine = BlockLine(meeting: meeting, roomHint: roomHint, showsRooms: preferences.showClassroomInClassTable)
         let changedTime = meeting.flatMap(MeetingText.changedTime)
         let markColor = policy.classTableCourseSecondaryTextColor.opacity(0.5)
 
@@ -79,8 +79,8 @@ struct TimetableSoloCell: View {
                             AppConstants.Periods.shortWeekdayLabel(weekday),
                             viewModel.grid.activePeriods(withClubs: withClubs).first { $0.id == periodId }?.displayLabel ?? periodId,
                             spokenCourse(
-                                course, room: bottomLine?.room ?? roomHint, changes: MeetingText.spoken(meeting),
-                                hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments
+                                course, isAssessment: meeting?.assessment != nil, room: bottomLine?.room ?? roomHint,
+                                changes: MeetingText.spoken(meeting), hasAssignment: hasBadge, ignoresAssignments: ignoresAssignments
                             )
                         ))
                     )
@@ -114,10 +114,8 @@ struct TimetableSoloCell: View {
         init?(meeting: CourseTimeSlot?, roomHint: String?, showsRooms: Bool) {
             if meeting?.isCancelled == true {
                 self = .cancelled
-            } else if let meeting, meeting.hasChangedRoom, showsRooms {
-                self = .changedRoom(meeting.room)
-            } else if let roomHint {
-                self = .room(roomHint)
+            } else if let line = CourseRoomHint.roomLine(meeting: meeting, hint: roomHint, showsRooms: showsRooms) {
+                self = line.isChanged ? .changedRoom(line.room) : .room(line.room)
             } else {
                 return nil
             }
@@ -202,7 +200,7 @@ struct TimetableSoloCell: View {
                 }
             }
             .overlay {
-                Text(course.displayName)
+                CourseName(course.displayName, isAssessment: meeting?.assessment != nil)
                     .timetableBlockName(metrics: metrics, policy: policy, lineLimit: lineLimit, isCancelled: isCancelled)
                     .padding(.bottom, leavesBottomLine ? metrics.roomHintSize + 2 : 0)
                     .padding(.top, leavesTopLine ? metrics.roomHintSize + 2 : 0)

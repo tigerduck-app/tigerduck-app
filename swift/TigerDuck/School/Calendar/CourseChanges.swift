@@ -4,7 +4,7 @@ import Observation
 
 nonisolated struct CourseChange: Equatable, Sendable {
     enum Kind: String, Sendable {
-        case cancelled, room, start, end, note
+        case cancelled, room, start, end, note, assessment, online
     }
 
     enum Periods: Equatable, Sendable {
@@ -31,6 +31,23 @@ nonisolated struct CourseChange: Equatable, Sendable {
 
     func note(for locale: Locale = .current) -> String? {
         locale.language.languageCode?.identifier == "zh" ? noteZh : noteEn
+    }
+
+    var changedRoom: String? {
+        switch kind {
+        case .room: room
+        case .online: String(localized: "course_change_online")
+        default: nil
+        }
+    }
+
+    var listedText: String? {
+        let detail = note().flatMap { $0.isEmpty ? nil : $0 }
+        return switch kind {
+        case .assessment: detail.map { "\(String(localized: "course_change_assessment")) · \($0)" }
+        case .online: [changedRoom, detail].compactMap { $0 }.joined(separator: " · ")
+        default: detail
+        }
     }
 }
 
@@ -104,13 +121,13 @@ private nonisolated extension CourseChange {
     init?(row: CourseChangesDTO.Row) {
         guard let kind = Kind(rawValue: row.kind) else { return nil }
         let value: String? = switch kind {
-        case .cancelled: nil
+        case .cancelled, .online: nil
         case .room: row.room
         case .start: row.start
         case .end: row.end
-        case .note: row.note_zh
+        case .note, .assessment: row.note_zh
         }
-        guard kind == .cancelled || value?.isEmpty == false else { return nil }
+        guard kind == .cancelled || kind == .online || value?.isEmpty == false else { return nil }
         self.init(
             id: row.id,
             courseNo: row.course_no,
@@ -182,6 +199,7 @@ final class CourseChangeStore {
         let generation = endpointGeneration
         var request = BackendRequest("GET", "calendar", "course-changes")
         request.authenticated = false
+        request.query = [URLQueryItem(name: "kinds", value: "assessment,online")]
         let tag = Defaults[.courseChangesETag]
 
         do {
