@@ -115,7 +115,8 @@ private struct TodayColumnRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 NameRoomLine(
                     name: row.course.displayName, room: row.classroom, roomChanged: row.change?.room != nil,
-                    isCancelled: row.isCancelled, nameFont: .courseName(nameSize, weight: .semibold),
+                    isCancelled: row.isCancelled, assessmentInk: palette.assessmentInk(for: row.change),
+                    nameFont: .courseName(nameSize, weight: .semibold),
                     roomFont: .subheadline.weight(.bold), ink: tile.ink, changeInk: palette.changeInk
                 )
                 if row.isCancelled {
@@ -178,10 +179,12 @@ struct TodayMediumList: View {
                 .fixedSize()
             NameRoomLine(
                 name: row.course.displayName, room: row.classroom, roomChanged: row.change?.room != nil,
-                isCancelled: row.isCancelled, nameFont: .courseName(nameSize, weight: .medium), roomFont: .footnote.weight(.bold),
+                isCancelled: row.isCancelled, assessmentInk: palette.assessmentInk(for: row.change),
+                nameFont: .courseName(nameSize, weight: .medium), roomFont: .footnote.weight(.bold),
                 ink: tile.ink, changeInk: palette.changeInk
             )
             .padding(.horizontal, 8)
+            .padding(.bottom, item.progress == nil ? 0 : WidgetTile.bottomBarHeight)
             .frame(maxHeight: .infinity)
             .classTile(tile, radius: 6, progress: item.progress, outline: 1.5, bottomBar: true)
         }
@@ -276,7 +279,8 @@ struct TodayTimelineView: View {
         let tall = height >= 56
         let line = NameRoomLine(
             name: row.course.displayName, room: row.classroom, roomChanged: row.change?.room != nil,
-            isCancelled: row.isCancelled, nameFont: .courseName(tall ? nameSize : shortNameSize, weight: .semibold),
+            isCancelled: row.isCancelled, assessmentInk: palette.assessmentInk(for: row.change),
+            nameFont: .courseName(tall ? nameSize : shortNameSize, weight: .semibold),
             roomFont: (tall ? Font.subheadline : .footnote).weight(.bold), ink: tile.ink, changeInk: palette.changeInk
         )
         VStack(alignment: .leading, spacing: 2) {

@@ -63,6 +63,7 @@ enum ClassTableExporter {
             differentiateWithoutColor: differentiateWithoutColor
         )
             .environment(app)
+            .environment(app.preferences)
             .environment(\.colorScheme, colorScheme)
             .environment(\.dynamicTypeSize, dynamicTypeSize)
             // Bold Text. Differentiate Without Color cannot be set here, so

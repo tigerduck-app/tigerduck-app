@@ -39,6 +39,10 @@ struct WidgetPalette {
         )
     }
 
+    func assessmentInk(for change: SnapshotCourseChange?) -> Color? {
+        AssessmentInk.hex(isAssessment: change?.assessment == true, onDark: isDark).map(Color.init(widgetHex:))
+    }
+
     func tile(_ colorHex: UInt32, isPast: Bool = false) -> WidgetTile {
         guard isFullColor else {
             return WidgetTile(
@@ -88,6 +92,8 @@ struct WidgetPalette {
 }
 
 struct WidgetTile {
+    static let bottomBarHeight: CGFloat = 3
+
     let fill: Color
     let ink: Color
     let secondaryInk: Color

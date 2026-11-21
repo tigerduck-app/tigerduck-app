@@ -6,16 +6,13 @@ struct MacClassTableCourseCell: View {
     let viewModel: ClassTableViewModel
     let course: CourseStore.Course
     var roomHint: String? = nil
+    var showsRooms = false
+    var meeting: CourseTimeSlot? = nil
 
     @Default(.outlineRequiredCourses) private var outlineRequiredCourses
 
     private var isViewingCurrentSemester: Bool {
         viewModel.currentSemester == SchoolTerms.current
-    }
-
-    static func spokenName(_ course: CourseStore.Course, ignoresAssignments: Bool) -> String {
-        guard ignoresAssignments else { return course.displayName }
-        return course.displayName + ", " + String(localized: "a11y_class_table_cell_assignments_ignored")
     }
 
     private static let ignoredMarkSize: CGFloat = 11
@@ -24,7 +21,7 @@ struct MacClassTableCourseCell: View {
         let color = TigerDuckTheme.courseColor(for: course.courseNo)
         let ignored = viewModel.editor.ignoresAssignments(of: course.courseNo)
         return VStack(alignment: .leading, spacing: 3) {
-            Text(course.displayName)
+            CourseName(course.displayName, isAssessment: meeting?.assessment != nil)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(3)
@@ -36,10 +33,9 @@ struct MacClassTableCourseCell: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 0)
-            if let roomHint {
-                Text(roomHint)
+            if let line = CourseRoomHint.roomLine(meeting: meeting, hint: roomHint, showsRooms: showsRooms) {
+                (line.isChanged ? Text.changedRoom(line.room) : Text(line.room).foregroundStyle(.secondary))
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
                     .lineLimit(1)
                     .padding(.trailing, ignored ? Self.ignoredMarkSize + 6 : 0)
             }

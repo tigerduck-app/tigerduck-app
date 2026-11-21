@@ -43,6 +43,8 @@ fails without the change:
 - a background refresh, a relaunch, the Watch, widgets and macOS
 - a return to the foreground: a refresh added to the first load runs there too
 - a write that failed: it is sent again without waiting for the server's revision to move
+- a per-period course change: a meeting whose changes cover only some of its periods, beside a
+  cancellation of some of them
 
 After every `await` that precedes a write, check `signIn.isCurrent` again before writing
 (`docs/decisions/0029-account-bound-writes.md`). A late result for an old sign-in writes nothing.
@@ -61,6 +63,8 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
   before pushing. CI's phone job runs iOS 27.0 only, and its iOS 18 job runs only the search
   suites and the calendar's VoiceOver tests; where iOS 26 or iOS 18 behavior is not run, say why
   in the pull request.
+- CI's iOS 18 job builds with Xcode 26, which gives up type-checking a long expression mixing
+  operators and conversions that Xcode 27 accepts: split such arithmetic into typed `let`s.
 - Tests follow the `writing-tests` skill. A test that starts a scroll or an animation waits for
   the outcome it asserts, not for the motion to end.
 - A CI job, checker or script change is tried against its bypasses: a renamed or commented-out
@@ -101,6 +105,8 @@ a parser of outside input:
   `git grep ... origin/dev` or the diff.
 - UI: 375 pt wide, the largest Dynamic Type, dark mode, and the VoiceOver label and state of each
   new control.
+- Portal web UI: render the changed component in headless Chromium at 1280 and 375 px with the
+  most badges and the longest text a cell can hold, and measure that nothing is clipped.
 
 ## Done when
 

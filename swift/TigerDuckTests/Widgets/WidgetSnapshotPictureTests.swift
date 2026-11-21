@@ -81,20 +81,108 @@ struct WidgetSnapshotPictureTests {
     func picture(of shot: Shot, look: Look) async throws {
         guard let family = Self.family(of: shot) else { return }
         try await withAccessibilityAutomation {
-            let snapshot = Fixtures.snapshot(courses: Fixtures.week(long: look.long))
             let between = [.nextSmallBetween, .nextMediumBetween, .todayPortraitBetween].contains(shot)
-            let now = between ? Fixtures.wednesday(12, 40) : Fixtures.wednesday(11, 32)
-            let palette = WidgetPalette.resolve(
-                snapshot: snapshot, colorScheme: look.style == .dark ? .dark : .light, renderingMode: look.renderingMode
-            )
-            let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
-            let (view, background, margins) = Self.content(of: shot, family: family, snapshot: snapshot, now: now, palette: palette, derived: derived)
-            let window = try WidgetLayoutTests.Host.show(
-                view, size: Self.size(of: shot, family: family), style: look.style, textSize: look.textSize,
-                renderingMode: look.renderingMode, background: background, margins: margins
+            let expected = shot == .nextSmallBetween || shot == .nextMediumBetween ? "計算機網路概論" : look.long ? "IB-505" : "TR-412"
+            let window = try await Self.show(
+                shot, family: family, look: look, snapshot: Fixtures.snapshot(courses: Fixtures.week(long: look.long)),
+                now: between ? Fixtures.wednesday(12, 40) : Fixtures.wednesday(11, 32), showing: expected
             )
             defer { window.isHidden = true }
-            let expected = shot == .nextSmallBetween || shot == .nextMediumBetween ? "計算機網路概論" : look.long ? "IB-505" : "TR-412"
+            window.saveSnapshot(as: "widget-\(shot.rawValue)-\(look.name)-\(Self.language)")
+        }
+    }
+
+    @Test(
+        "A class with an assessment is underlined and an online class shows Online in its room's place",
+        arguments: [Shot.nextSmall, .nextMedium, .todayMedium, .weekLarge], [looks[0], looks[1]]
+    )
+    func courseChange(of shot: Shot, look: Look) async throws {
+        let family = try #require(Self.family(of: shot))
+        try await withAccessibilityAutomation {
+            let assessment = String(localized: "course_change_assessment")
+            let online = String(localized: "course_change_online")
+            let changes = [
+                "CS2001": SnapshotCourseChange(
+                    day: "2026-11-11", periods: ["3", "4"], cancelled: false, room: nil, start: nil, end: nil, assessment: true
+                ),
+                "CS3001": SnapshotCourseChange(day: "2026-11-11", periods: ["6", "7"], cancelled: false, room: online, start: nil, end: nil),
+            ]
+            func courses(_ changes: [String: SnapshotCourseChange]) -> [SnapshotCourse] {
+                Fixtures.week().map { course in
+                    changes[course.courseNo].map {
+                        SnapshotCourse(
+                            courseNo: course.courseNo, displayName: course.displayName, classroom: course.classroom,
+                            schedule: course.schedule, colorHex: course.colorHex, changes: [$0], meetingChanges: [$0]
+                        )
+                    } ?? course
+                }
+            }
+            let plain = try await Self.show(
+                shot, family: family, look: look, snapshot: Fixtures.snapshot(courses: courses(changes.filter { $0.key != "CS2001" })),
+                now: Fixtures.wednesday(11, 32), showing: "資料結構與演算法"
+            )
+            let plainPicture = plain.picture()
+            plain.isHidden = true
+            let window = try await Self.show(
+                shot, family: family, look: look, snapshot: Fixtures.snapshot(courses: courses(changes)), now: Fixtures.wednesday(11, 32),
+                showing: "資料結構與演算法, \(assessment)"
+            )
+            defer { window.isHidden = true }
+            window.saveSnapshot(as: "widget-course-change-\(shot.rawValue)-\(look.name)")
+
+            let texts = exposedAccessibilityTexts(in: window)
+            #expect(texts.contains { $0.contains(online) } == (shot != .nextSmall))
+            #expect(!texts.contains { $0.contains("計算機網路概論, \(assessment)") })
+            let ink = look.style == .dark ? AssessmentInk.dark : AssessmentInk.light
+            let scan = try #require(InkScan(window.picture(), ink: ink, plain: plainPicture))
+            #expect(!scan.bands.isEmpty)
+            for band in scan.bands {
+                #expect(band.height >= 1.2)
+                #expect(band.dashes >= max(2, Int(band.width / 7)))
+            }
+        }
+    }
+
+    @Test("A class with an assessment that overlaps another class is underlined in the week grid too", arguments: [looks[0], looks[1]])
+    func assessedConflict(look: Look) async throws {
+        try await withAccessibilityAutomation {
+            let overlapping = Fixtures.course("CS3101", "編譯器設計", "TR-212", [3: ["3", "4"]], 0x9B59B6)
+            let exam = SnapshotCourseChange(
+                day: "2026-11-11", periods: ["3", "4"], cancelled: false, room: nil, start: nil, end: nil, assessment: true
+            )
+            var pictures: [Data] = []
+            for changes in [[], [exam]] {
+                let course = SnapshotCourse(
+                    courseNo: overlapping.courseNo, displayName: overlapping.displayName, classroom: overlapping.classroom,
+                    schedule: overlapping.schedule, colorHex: overlapping.colorHex, changes: changes, meetingChanges: changes
+                )
+                let shown = changes.isEmpty ? "編譯器設計" : "編譯器設計, \(String(localized: "course_change_assessment"))"
+                let window = try await Self.show(
+                    .weekLarge, family: .systemLarge, look: look, snapshot: Fixtures.snapshot(courses: Fixtures.week() + [course]),
+                    now: Fixtures.wednesday(11, 32), showing: shown
+                )
+                defer { window.isHidden = true }
+                pictures.append(try #require(window.picture().pngData()))
+                if !changes.isEmpty { window.saveSnapshot(as: "widget-course-change-conflict-\(look.name)") }
+            }
+
+            #expect(pictures[0] != pictures[1])
+        }
+    }
+
+    private static func show(
+        _ shot: Shot, family: WidgetFamily, look: Look, snapshot: WidgetSnapshot, now: Date, showing expected: String
+    ) async throws -> UIWindow {
+        let palette = WidgetPalette.resolve(
+            snapshot: snapshot, colorScheme: look.style == .dark ? .dark : .light, renderingMode: look.renderingMode
+        )
+        let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
+        let (view, background, margins) = content(of: shot, family: family, snapshot: snapshot, now: now, palette: palette, derived: derived)
+        let window = try WidgetLayoutTests.Host.show(
+            view, size: size(of: shot, family: family), style: look.style, textSize: look.textSize,
+            renderingMode: look.renderingMode, background: background, margins: margins
+        )
+        do {
             try await waitUntil { exposedAccessibilityTexts(in: window).contains { $0.contains(expected) } }
             var shown: Data?
             try await waitUntil {
@@ -102,8 +190,11 @@ struct WidgetSnapshotPictureTests {
                 defer { shown = picture }
                 return picture != nil && picture == shown
             }
-            window.saveSnapshot(as: "widget-\(shot.rawValue)-\(look.name)-\(Self.language)")
+        } catch {
+            window.isHidden = true
+            throw error
         }
+        return window
     }
 
     private static func content(

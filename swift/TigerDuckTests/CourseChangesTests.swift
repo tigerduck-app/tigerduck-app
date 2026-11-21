@@ -21,12 +21,12 @@ struct CourseChangesTests {
         SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "T4-501", schedule: [4: ["2", "3", "4", "7", "8"]])
     }
 
-    private static func row(
-        _ id: Int, _ kind: String, periods: [String]? = nil, days: [String] = ["2026-11-05"],
+    static func row(
+        _ id: Int, _ kind: String, course: String = "CC900", periods: [String]? = nil, days: [String] = ["2026-11-05"],
         values: [String: String] = [:]
     ) -> [String: Any] {
         var row: [String: Any] = [
-            "id": id, "course_no": "CC900", "kind": kind, "mode": "day", "day": days[0],
+            "id": id, "course_no": course, "kind": kind, "mode": "day", "day": days[0],
             "from": NSNull(), "to": NSNull(), "excluded_weekdays": [Int](), "periods": periods.map { $0 as Any } ?? NSNull(),
             "class_days": days, "room": NSNull(), "start": NSNull(), "end": NSNull(),
             "note_zh": NSNull(), "note_en": NSNull(), "updated_at": "2026-10-29T14:03:00+08:00",
@@ -35,8 +35,12 @@ struct CourseChangesTests {
         return row
     }
 
-    private static func feed(_ rows: [[String: Any]]) -> Data {
+    static func feed(_ rows: [[String: Any]]) -> Data {
         try! JSONSerialization.data(withJSONObject: ["term": "1151", "changes": rows] as [String: Any])
+    }
+
+    private static func feedURL(_ base: URL) -> URL {
+        URL(string: base.absoluteString + "/calendar/course-changes?kinds=assessment,online")!
     }
 
     private static func changes(_ rows: [[String: Any]]) throws -> CourseChanges {
@@ -47,11 +51,13 @@ struct CourseChangesTests {
         CourseTimeSlot.buildSlots(from: [course()], weekday: 4, on: day, changes: changes)
     }
 
-    private static func withStoredFeed<T>(_ data: Data, _ body: () throws -> T) rethrows -> T {
-        let saved = Defaults[.courseChangesCache]
-        defer { Defaults[.courseChangesCache] = saved }
-        Defaults[.courseChangesCache] = data
-        return try body()
+    private static func withStoredFeed<T>(_ data: Data, _ body: () throws -> T) async rethrows -> T {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.courseChangesCache]
+            defer { Defaults[.courseChangesCache] = saved }
+            Defaults[.courseChangesCache] = data
+            return try body()
+        }
     }
 
     @Test func decodesTheFeedAndDropsUnknownKindsAndIncompleteRows() throws {
@@ -276,6 +282,33 @@ struct CourseChangesTests {
         #expect(!CourseTimeSlot.isSkipped(slotId: "CC900_20261112_7", in: courses, changes: changes))
     }
 
+    @Test func aLiveActivityMarksAnAssessmentAndShowsAnOnlineClassAsARoomChange() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2", "3", "4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["7", "8"]),
+        ])
+        let slots = Self.slots(changes)
+
+        let exam = LiveActivityScenarioResolver.classPreparingSnapshot(slot: slots[0], accentHex: 0)
+        let online = LiveActivityScenarioResolver.inClassSnapshot(slot: slots[1], now: Self.at("14:30"), accentHex: 0)
+        #expect(exam.assessment == true && exam.roomChanged == nil && exam.locationText == "T4-501")
+        #expect(online.assessment == nil && online.roomChanged == true)
+        #expect(online.locationText == String(localized: "course_change_online"))
+        #expect(!String(decoding: try JSONEncoder().encode(online), as: UTF8.self).contains("assessment"))
+    }
+
+    @Test func aLiveActivityStartFromTheServerReadsWithAndWithoutTheAssessmentKey() throws {
+        func snapshot(_ extra: String) throws -> LiveActivitySnapshot {
+            let json = #"{"snapshot":{"scenario":"classPreparing","title":"作業系統","subtitle":"09:10","#
+                + #""locationText":"線上","accentHex":0,"sourceId":"CS3001301_20261105_2","roomChanged":true\#(extra)}}"#
+            return try JSONDecoder().decode(TigerDuckActivityAttributes.ContentState.self, from: Data(json.utf8)).snapshot
+        }
+
+        #expect(try snapshot(#","assessment":true"#).assessment == true)
+        let older = try snapshot("")
+        #expect(older.assessment == nil && older.roomChanged == true && older.locationText == "線上")
+    }
+
     @Test func theLiveActivityPassesOverACancelledClassAndShowsTheChangedRoomAndStart() throws {
         let changes = try Self.changes([
             Self.row(1, "cancelled", periods: ["2", "3", "4"]),
@@ -303,7 +336,7 @@ struct CourseChangesTests {
         #expect(!json.contains("roomChanged") && !json.contains("timeChanged"))
     }
 
-    @Test func theScheduleSentToTheServerSkipsACancelledClassAndUsesTheChangedStart() {
+    @Test func theScheduleSentToTheServerSkipsACancelledClassAndUsesTheChangedStart() async {
         let data = Self.feed([
             Self.row(1, "cancelled", periods: ["7", "8"]),
             Self.row(2, "start", periods: ["2", "3", "4"], values: ["start": "10:00"]),
@@ -317,7 +350,7 @@ struct CourseChangesTests {
             term: CourseSelectionService.semesterCode(on: Self.thursday, calendar: .empty)
         )
 
-        let events = Self.withStoredFeed(data) {
+        let events = await Self.withStoredFeed(data) {
             ScheduleSyncService.buildEvents(
                 inputs: inputs, now: Self.thursday, horizonEnd: Self.thursday.addingTimeInterval(48 * 3600)
             )
@@ -490,105 +523,310 @@ struct CourseChangesTests {
         #expect(offset(851) == nil)
     }
 
-    @Test func theStoreSendsItsETagKeepsItsCopyOnA304AndReplacesItOnA200() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
+    private static let midterm = ["note_zh": "期中考", "note_en": "Midterm exam"]
+
+    private static func local(_ zh: String, _ en: String) -> String {
+        Locale.current.language.languageCode?.identifier == "zh" ? zh : en
+    }
+
+    @Test func anAssessmentMarksOnlyTheMeetingOfItsDayAndAnUnnamedOneIsDropped() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2", "3", "4"], values: Self.midterm),
+            Self.row(2, "assessment", periods: ["7", "8"]),
+        ])
+
+        #expect(Self.slots(changes).map { $0.assessment?.id } == [1, nil])
+        #expect(Self.slots(changes).map(\.notes) == [[], []])
+        let nextWeek = Self.thursday.addingTimeInterval(7 * 86400)
+        #expect(Self.slots(changes, on: nextWeek).allSatisfy { $0.assessment == nil })
+        let meeting = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["3"], on: Self.thursday, changes: changes))
+        #expect(meeting.assessment?.note() == Self.local("期中考", "Midterm exam"))
+    }
+
+    @Test func aCancellationWinsOverAnAssessmentAndAnExamKeepsItsNewRoom() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", values: Self.midterm),
+            Self.row(2, "cancelled", periods: ["7", "8"]),
+            Self.row(3, "room", periods: ["2", "3", "4"], values: ["room": "TR-313"]),
+        ])
+
+        let slots = Self.slots(changes)
+        #expect(slots.map(\.isCancelled) == [false, true])
+        #expect(slots.map { $0.assessment?.id } == [1, nil])
+        #expect(slots[0].hasChangedRoom && slots[0].room == "TR-313")
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let parts = [
+            "TR-313", String(localized: "course_card_cancelled"), String(localized: "course_change_assessment"),
+            Self.local("期中考", "Midterm exam"),
+        ]
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map(\.summary) == [parts.joined(separator: " · ")])
+    }
+
+    @Test func anOnlineClassTakesTheRoomsPlaceAndSplitsAMeetingAsARoomChangeDoes() throws {
+        let online = String(localized: "course_change_online")
+        let whole = try Self.changes([Self.row(1, "online", periods: ["7", "8"])])
+        let part = try Self.changes([Self.row(1, "online", periods: ["4"], values: ["note_zh": "", "note_en": ""])])
+
+        #expect(Self.slots(whole).map(\.room) == ["T4-501", online])
+        #expect(Self.slots(whole).map(\.hasChangedRoom) == [false, true])
+        #expect(Self.slots(part).map(\.periods) == [["2", "3"], ["4"], ["7", "8"]])
+        #expect(Self.slots(part).map(\.room) == ["T4-501", online, "T4-501"])
+        let meeting = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2"], on: Self.thursday, changes: part))
+        #expect(meeting.room == online && meeting.online?.id == 1)
+    }
+
+    @Test func theChangesListNamesTheAssessmentAndTheOnlineClassEvenForTheShownMeeting() throws {
+        let (assessment, online) = (String(localized: "course_change_assessment"), String(localized: "course_change_online"))
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2", "3", "4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["7", "8"], days: ["2026-11-12"],
+                     values: ["note_zh": "請自行學習 Module 5", "note_en": "Study Module 5 on your own"]),
+            Self.row(3, "online", days: ["2026-11-19"]),
+            Self.row(4, "assessment", days: ["2026-11-26"], values: Self.midterm),
+            Self.row(5, "cancelled", days: ["2026-11-26"]),
+        ])
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let today = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        let rows = [
+            "\(assessment) · \(Self.local("期中考", "Midterm exam"))",
+            "\(online) · \(Self.local("請自行學習 Module 5", "Study Module 5 on your own"))",
+            online,
+            String(localized: "course_card_cancelled"),
+        ]
+
+        #expect(CourseDetailChanges.changeRows(days, besides: nil).map(\.summary) == rows)
+        #expect(CourseDetailChanges.changeRows(days, besides: today).map(\.summary) == rows)
+    }
+
+    @Test func aClassTableCellIsRedrawnWhenItsMeetingBecomesAnAssessment() throws {
+        let note = Self.row(1, "note", periods: ["2"], values: ["note_zh": "帶筆電"])
+        func key(_ rows: [[String: Any]]) throws -> String {
+            let changes = try Self.changes(rows)
+            let meeting = CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes)
+            return TimetableCellTransitionID.of(.solo(Self.course(), spanCount: 3), weekday: 4, periodId: "2", meeting: meeting, showsRooms: true)
         }
-        Defaults[.courseChangesCache] = Data()
-        Defaults[.courseChangesETag] = ""
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+
+        #expect(try key([note]) != key([note, Self.row(2, "assessment", periods: ["2"], values: Self.midterm)]))
+    }
+
+    @Test func anAssessmentOrOnlineClassOnOnlyCancelledPeriodsLeavesTheHeldPeriodsUnmarked() throws {
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["4"], values: Self.midterm),
+            Self.row(2, "online", periods: ["4"]),
+            Self.row(3, "cancelled", periods: ["4"]),
+            Self.row(4, "assessment", periods: ["7", "8"], values: Self.midterm),
+            Self.row(5, "cancelled", periods: ["8"]),
+        ])
+        let morning = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["2", "3", "4"], on: Self.thursday, changes: changes))
+        let afternoon = try #require(CourseTimeSlot.meeting(of: Self.course(), periods: ["7", "8"], on: Self.thursday, changes: changes))
+
+        #expect(!morning.isCancelled && morning.assessment == nil && morning.online == nil)
+        #expect(morning.room == "T4-501" && !morning.hasChangedRoom)
+        #expect(afternoon.assessment?.id == 4)
+        #expect(Self.slots(changes).map(\.room) == ["T4-501", "T4-501", "T4-501", "T4-501"])
+    }
+
+    @Test func theChangesListNamesEveryAssessmentAndOnlineClassOfAMeeting() throws {
+        let (assessment, online) = (String(localized: "course_change_assessment"), String(localized: "course_change_online"))
+        let changes = try Self.changes([
+            Self.row(1, "assessment", periods: ["2"], values: Self.midterm),
+            Self.row(2, "assessment", periods: ["4"], values: ["note_zh": "小考", "note_en": "Quiz"]),
+            Self.row(3, "online", periods: ["2"], values: ["note_zh": "第一節線上", "note_en": "First period online"]),
+            Self.row(4, "online", periods: ["4"], values: ["note_zh": "第三節線上", "note_en": "Third period online"]),
+        ])
+        let days = CourseTimeSlot.upcomingChanges(of: Self.course(), from: Self.thursday, changes: changes)
+        let rows = CourseDetailChanges.changeRows(days, besides: nil).map(\.summary)
+
+        #expect(rows.count == 1)
+        for listed in [
+            "\(assessment) · \(Self.local("期中考", "Midterm exam"))",
+            "\(assessment) · \(Self.local("小考", "Quiz"))",
+            "\(online) · \(Self.local("第一節線上", "First period online"))",
+            "\(online) · \(Self.local("第三節線上", "Third period online"))",
+        ] {
+            #expect(rows.first?.contains(listed) == true)
+        }
+    }
+
+    @Test func aClassTableCellShowsAChangedRoomEvenWithoutATimetableRoomCodeButOnlyWhenRoomsAreShown() throws {
+        let course = SDCourse(courseNo: "CC900", courseName: "Compilers", classroom: "", schedule: [4: ["2", "3", "4"]])
+        let online = String(localized: "course_change_online")
+        let changes = try Self.changes([Self.row(1, "online")])
+        let meeting = CourseTimeSlot.meeting(of: course, periods: ["2", "3", "4"], on: Self.thursday, changes: changes)
+        let hint = CourseRoomHint.room(for: course, weekday: 4, periodId: "2")
+
+        #expect(hint == nil)
+        let shown = CourseRoomHint.roomLine(meeting: meeting, hint: hint, showsRooms: true)
+        #expect(shown?.room == online && shown?.isChanged == true)
+        #expect(CourseRoomHint.roomLine(meeting: meeting, hint: hint, showsRooms: false) == nil)
+        let timetable = CourseRoomHint.roomLine(meeting: nil, hint: "TR-313", showsRooms: true)
+        #expect(timetable?.room == "TR-313" && timetable?.isChanged == false)
+    }
+
+    @Test func aConflictCellIsRedrawnWhenOneOfItsClassesBecomesAnAssessment() {
+        let other = SDCourse(courseNo: "CC901", courseName: "Parsing", classroom: "T4-502", schedule: [4: ["3", "4"]])
+        let pair = ClassTableGrid.CellRole.conflictStart(
+            courseA: Self.course(), spanA: 3, offsetA: 0, courseB: other, spanB: 2, offsetB: 1, combinedSpan: 3
         )
-        let first = Self.feed([Self.row(1, "cancelled")])
+        let lanes = ClassTableGrid.CellRole.conflictMany(
+            segments: [ClassTableConflictSegment(course: other, key: "CC901", span: 2, offset: 1, lane: 0)],
+            combinedSpan: 3, laneCount: 3
+        )
+        for role in [pair, lanes] {
+            func key(_ assessed: Set<String>) -> String {
+                TimetableCellTransitionID.of(role, weekday: 4, periodId: "2", meeting: nil, assessed: assessed, showsRooms: true)
+            }
+            #expect(key([]) != key(["CC901"]))
+        }
+    }
 
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: first, headerFields: ["ETag": #"W/"a""#]), for: url)
-        #expect(await store.refresh())
-        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+    @Test func aClassTableCellReadsTheAssessmentRightAfterTheCourseName() {
+        let course = Self.course()
+        let online = String(localized: "course_change_online")
 
-        SettingsAPIStub.enqueue(.init(statusCode: 304, body: Data()), for: url)
-        #expect(await store.refresh() == false)
-        SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
-        #expect(await store.refresh() == false)
-        #expect(Defaults[.courseChangesCache] == first)
+        #expect(spokenCourse(course, isAssessment: true, room: online, hasAssignment: false, ignoresAssignments: false)
+            == "Compilers, \(String(localized: "course_change_assessment")), \(online)")
+        #expect(spokenCourse(course, room: "T4-501", hasAssignment: false, ignoresAssignments: false) == "Compilers, T4-501")
+    }
 
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), headerFields: ["ETag": #"W/"b""#]), for: url)
-        #expect(await store.refresh())
-        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).isEmpty)
-        #expect(Defaults[.courseChangesETag] == #"W/"b""#)
+    @Test func theStoreAsksForAssessmentsAndOnlineClassesAndReplacesTheNotesAnOlderBuildStored() async throws {
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            Defaults[.courseChangesCache] = Self.feed([Self.row(1, "note", values: ["note_zh": "期中考", "note_en": "期中考"])])
+            Defaults[.courseChangesETag] = #"W/"notes""#
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            SettingsAPIStub.enqueue(
+                .init(
+                    statusCode: 200, body: Self.feed([Self.row(1, "assessment", values: Self.midterm)]),
+                    headerFields: ["ETag": #"W/"kinds""#]
+                ),
+                for: url
+            )
 
-        let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
-        #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
-        #expect(SettingsAPIStub.requests(for: url).allSatisfy { $0.cachePolicy == .reloadIgnoringLocalCacheData })
+            #expect(await store.refresh())
+            #expect(SettingsAPIStub.requests(for: url).map { $0.url?.query } == ["kinds=assessment,online"])
+            let stored = CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday)
+            #expect(stored.map(\.kind) == [.assessment])
+            #expect(Defaults[.courseChangesETag] == #"W/"kinds""#)
+        }
+    }
+
+    @Test func theStoreSendsItsETagKeepsItsCopyOnA304AndReplacesItOnA200() async throws {
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            Defaults[.courseChangesCache] = Data()
+            Defaults[.courseChangesETag] = ""
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            let first = Self.feed([Self.row(1, "cancelled")])
+
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: first, headerFields: ["ETag": #"W/"a""#]), for: url)
+            #expect(await store.refresh())
+            #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+
+            SettingsAPIStub.enqueue(.init(statusCode: 304, body: Data()), for: url)
+            #expect(await store.refresh() == false)
+            SettingsAPIStub.enqueue(.init(statusCode: 404, body: Data()), for: url)
+            #expect(await store.refresh() == false)
+            #expect(Defaults[.courseChangesCache] == first)
+
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), headerFields: ["ETag": #"W/"b""#]), for: url)
+            #expect(await store.refresh())
+            #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).isEmpty)
+            #expect(Defaults[.courseChangesETag] == #"W/"b""#)
+
+            let sent = SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") }
+            #expect(sent == [nil, #"W/"a""#, #"W/"a""#, #"W/"a""#])
+            #expect(SettingsAPIStub.requests(for: url).allSatisfy { $0.cachePolicy == .reloadIgnoringLocalCacheData })
+        }
     }
 
     @Test func aStoredFeedThisBuildCannotReadIsFetchedAgain() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
-        }
-        Defaults[.courseChangesCache] = Data("not a feed".utf8)
-        Defaults[.courseChangesETag] = #"W/"a""#
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
-        )
-        SettingsAPIStub.enqueue(
-            .init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), headerFields: ["ETag": #"W/"a""#]),
-            for: url
-        )
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            Defaults[.courseChangesCache] = Data("not a feed".utf8)
+            Defaults[.courseChangesETag] = #"W/"a""#
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            SettingsAPIStub.enqueue(
+                .init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), headerFields: ["ETag": #"W/"a""#]),
+                for: url
+            )
 
-        #expect(await store.refresh())
-        #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil])
-        #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+            #expect(await store.refresh())
+            #expect(SettingsAPIStub.requests(for: url).map { $0.value(forHTTPHeaderField: "If-None-Match") } == [nil])
+            #expect(CourseChanges.cached.changes(courseNo: "CC900", on: Self.thursday).map(\.id) == [1])
+        }
     }
 
     @Test func aRefreshAnEndpointChangeReplacedLeavesTheNewOneToBeJoined() async throws {
-        let savedCache = Defaults[.courseChangesCache]
-        let savedTag = Defaults[.courseChangesETag]
-        defer {
-            Defaults[.courseChangesCache] = savedCache
-            Defaults[.courseChangesETag] = savedTag
+        try await withExclusiveRealDefaults {
+            let savedCache = Defaults[.courseChangesCache]
+            let savedTag = Defaults[.courseChangesETag]
+            defer {
+                Defaults[.courseChangesCache] = savedCache
+                Defaults[.courseChangesETag] = savedTag
+            }
+            let base = SettingsAPIStub.uniqueBaseURL()
+            let url = Self.feedURL(base)
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [SettingsAPIStub.self]
+            let store = CourseChangeStore(
+                session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
+            )
+            let old = SettingsAPIStub.ReplyGate()
+            let new = SettingsAPIStub.ReplyGate()
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), gate: old), for: url)
+            SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), gate: new), for: url)
+
+            let first = Task { await store.refresh() }
+            try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
+            store.endpointDidChange()
+            try await waitUntil { SettingsAPIStub.requests(for: url).count == 2 }
+            old.open()
+            _ = await first.value
+            let joined = Task { await store.refresh() }
+            new.open()
+
+            #expect(await joined.value)
+            #expect(SettingsAPIStub.requests(for: url).count == 2)
         }
-        let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
-        let config = URLSessionConfiguration.ephemeral
-        config.protocolClasses = [SettingsAPIStub.self]
-        let store = CourseChangeStore(
-            session: URLSession(configuration: config), baseURL: { base }, hasCompletedOnboarding: { true }
-        )
-        let old = SettingsAPIStub.ReplyGate()
-        let new = SettingsAPIStub.ReplyGate()
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([]), gate: old), for: url)
-        SettingsAPIStub.enqueue(.init(statusCode: 200, body: Self.feed([Self.row(1, "cancelled")]), gate: new), for: url)
-
-        let first = Task { await store.refresh() }
-        try await waitUntil { SettingsAPIStub.requests(for: url).count == 1 }
-        store.endpointDidChange()
-        try await waitUntil { SettingsAPIStub.requests(for: url).count == 2 }
-        old.open()
-        _ = await first.value
-        let joined = Task { await store.refresh() }
-        new.open()
-
-        #expect(await joined.value)
-        #expect(SettingsAPIStub.requests(for: url).count == 2)
     }
 
     @Test func theStoreAsksNothingBeforeOnboardingEnds() async {
         let base = SettingsAPIStub.uniqueBaseURL()
-        let url = base.appendingPathComponent("calendar").appendingPathComponent("course-changes")
+        let url = Self.feedURL(base)
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [SettingsAPIStub.self]
         let store = CourseChangeStore(

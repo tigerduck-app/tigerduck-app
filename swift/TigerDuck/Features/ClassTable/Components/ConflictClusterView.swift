@@ -9,6 +9,7 @@ struct ConflictCluster {
     let periodId: String
     let metrics: TimetableCellMetrics
     let withClubs: Bool
+    var assessed: Set<String> = []
 
     var periodLabel: String {
         viewModel.grid.activePeriods(withClubs: withClubs).first { $0.id == periodId }?.displayLabel ?? periodId

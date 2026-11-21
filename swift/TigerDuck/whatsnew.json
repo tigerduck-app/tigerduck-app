@@ -912,5 +912,21 @@
         { "symbol": "checklist", "title": "Assignments", "body": "Fixed assignments without a due date not showing up." }
       ]
     }
+  },
+  "4.0.3": {
+    "zh-TW": {
+      "title": "4.0.3 更新內容",
+      "items": [
+        { "symbol": "pencil.and.list.clipboard", "title": "評量標示", "body": "考試與簡報以紅色虛線標在課名下。" },
+        { "symbol": "laptopcomputer", "title": "線上課程", "body": "改為線上的課以「線上」取代教室。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 4.0.3",
+      "items": [
+        { "symbol": "pencil.and.list.clipboard", "title": "Assessments", "body": "Exams and presentations are underlined with a red dashed line." },
+        { "symbol": "laptopcomputer", "title": "Online classes", "body": "A class moved online shows Online in place of its room." }
+      ]
+    }
   }
 }

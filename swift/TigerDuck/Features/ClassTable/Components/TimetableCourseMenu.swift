@@ -3,17 +3,6 @@ import SwiftUI
 import UIKit
 #endif
 
-func spokenCourse(
-    _ course: CourseStore.Course, room: String? = nil, changes: [String] = [], hasAssignment: Bool, ignoresAssignments: Bool
-) -> String {
-    var parts = [course.displayName]
-    if let room { parts.append(room) }
-    parts += changes
-    if hasAssignment { parts.append(String(localized: "a11y_class_table_cell_assignment_indicator")) }
-    if ignoresAssignments { parts.append(String(localized: "a11y_class_table_cell_assignments_ignored")) }
-    return parts.joined(separator: ", ")
-}
-
 extension Shape {
     func innerOutline(_ color: Color) -> some View {
         stroke(color, lineWidth: 2).clipShape(self)
@@ -33,7 +22,7 @@ struct TimetableCellMetrics {
     }
 }
 
-extension Text {
+extension View {
     func timetableBlockName(
         metrics: TimetableCellMetrics, policy: VisualStylePolicy, lineLimit: Int, isCancelled: Bool = false
     ) -> some View {

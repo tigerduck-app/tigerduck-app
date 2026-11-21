@@ -406,6 +406,35 @@ struct TimeSliderViewModelTests {
         }
     }
 
+    @Test("the time machine marks only the assessment's day and shows an online class in place of its room")
+    func timeMachineCarriesAssessmentsAndOnlineClasses() async throws {
+        try await withExclusiveRealDefaults {
+            let saved = Defaults[.courseChangesCache]
+            defer { Defaults[.courseChangesCache] = saved }
+            let allDays = Dictionary(uniqueKeysWithValues: (1...7).map { ($0, ["3", "4"]) })
+            let course = SDCourse(courseNo: "TEST100", courseName: "Test", classroom: "TR-313", schedule: allDays)
+            let today = AcademicCalendar.startOfDay(AppClock.now())
+            let tomorrow = try #require(TaipeiTime.calendar.date(byAdding: .day, value: 1, to: today))
+            Defaults[.courseChangesCache] = CourseChangesTests.feed([
+                CourseChangesTests.row(
+                    1, "assessment", course: "TEST100", days: [TaipeiTime.dayKey(for: today)],
+                    values: ["note_zh": "期中考", "note_en": "Midterm exam"]
+                ),
+                CourseChangesTests.row(2, "online", course: "TEST100", days: [TaipeiTime.dayKey(for: tomorrow)]),
+            ])
+
+            let viewModel = TimeSliderViewModel()
+            viewModel.configure(courses: [course])
+            let byDay = Dictionary(grouping: viewModel.courseSlots) { AcademicCalendar.startOfDay($0.date) }
+
+            #expect(byDay[today]?.map { $0.assessment?.id } == [1])
+            #expect(byDay[today]?.map(\.room) == ["TR-313"])
+            #expect(byDay[tomorrow]?.map { $0.assessment?.id } == [nil])
+            #expect(byDay[tomorrow]?.map(\.room) == [String(localized: "course_change_online")])
+            #expect(byDay[tomorrow]?.map(\.hasChangedRoom) == [true])
+        }
+    }
+
     @Test("a cancelled class still covers a club, as the track still draws it")
     func cancelledClassCoversAClub() {
         let day = TaipeiTime.calendar.startOfDay(for: AppClock.now())

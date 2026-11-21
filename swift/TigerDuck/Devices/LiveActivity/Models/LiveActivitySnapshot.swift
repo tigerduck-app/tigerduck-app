@@ -15,10 +15,12 @@ nonisolated struct LiveActivitySnapshot: Codable, Equatable, Hashable, Sendable 
     let accentHex: Int
     let deepLink: URL?
     let sourceId: String
-    /// True when the school changed the room or the time that day. Nil is left out of the JSON,
-    /// so an unchanged class encodes as before and the server passes the keys on untouched.
+    /// True when the school changed the room or the time that day, or when the class is an assessment.
+    /// Nil is left out of the JSON, so an unchanged class encodes as before and the server passes the
+    /// keys on untouched.
     var roomChanged: Bool? = nil
     var timeChanged: Bool? = nil
+    var assessment: Bool? = nil
     var accentGradient: AccentGradient? = nil
 
     /// activity and the follow-up inClass activity are distinct as far as

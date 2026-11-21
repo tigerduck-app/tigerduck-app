@@ -83,6 +83,9 @@ nonisolated struct SnapshotCourseChange: Codable, Equatable, Hashable, Sendable 
     /// `HH:mm`, Taipei time.
     let start: String?
     let end: String?
+    var assessment: Bool? = nil
+
+    var changesTheTimetable: Bool { cancelled || room != nil || start != nil || end != nil }
 }
 
 nonisolated extension SnapshotCourse {

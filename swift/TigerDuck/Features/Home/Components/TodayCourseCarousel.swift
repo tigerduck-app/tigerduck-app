@@ -22,6 +22,7 @@ struct TodayCourseCarousel: View {
     let hasAssignment: (String) -> Bool
     var showProgress: Bool = true
     var ongoing: [OngoingCourseInfo] = []
+    var changes: SchoolCalendar.Changes = .empty
     var onSelect: ((CourseStore.Course) -> Void)? = nil
     var onSelectOngoing: ((OngoingCourseInfo) -> Void)? = nil
 
@@ -68,6 +69,7 @@ struct TodayCourseCarousel: View {
                         } label: {
                             TodayCourseCard(
                                 course: course,
+                                meetings: CourseTimeSlot.buildSlots(from: [course], weekday: today, on: AppClock.now(), changes: changes),
                                 showBadge: hasAssignment(course.courseNo),
                                 progress: showProgress ? courseProgress(course) : nil
                             )
@@ -175,6 +177,7 @@ struct TodayCourseCard: View {
     static let width: CGFloat = 140
 
     let course: CourseStore.Course
+    var meetings: [CourseTimeSlot] = []
     var showBadge: Bool = false
     var progress: Double? = nil
 
@@ -187,10 +190,17 @@ struct TodayCourseCard: View {
         return p > 0 && p < 1
     }
 
+    private var changedRooms: String? {
+        let held = meetings.filter { !$0.isCancelled }
+        guard held.contains(where: \.hasChangedRoom) else { return nil }
+        var seen = Set<String>()
+        return held.map(\.room).filter { seen.insert($0).inserted }.joined(separator: ", ")
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             HStack {
-                Text(course.displayName)
+                CourseName(course.displayName, isAssessment: meetings.contains { $0.assessment != nil })
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)
@@ -205,9 +215,9 @@ struct TodayCourseCard: View {
                 }
             }
 
-            Text(course.classroom(for: AppClock.now().scheduleWeekday))
+            (changedRooms.map(Text.changedRoom)
+                ?? Text(course.classroom(for: AppClock.now().scheduleWeekday)).foregroundStyle(Color.textSecondary))
                 .font(TigerDuckTheme.Typography.caption)
-                .foregroundStyle(Color.textSecondary)
 
             Spacer(minLength: 0)
 

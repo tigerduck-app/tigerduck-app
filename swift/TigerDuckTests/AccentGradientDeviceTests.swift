@@ -72,7 +72,7 @@ struct AccentGradientDevicePayloadTests {
             locationText: String(repeating: "室", count: 32), instructor: String(repeating: "師", count: 32),
             countdownTarget: Date(), progressStart: Date(), accentHex: 0xFFFFFF,
             deepLink: URL(string: "tigerduck://course/" + String(repeating: "x", count: 64)),
-            sourceId: String(repeating: "s", count: 64), roomChanged: true, timeChanged: true
+            sourceId: String(repeating: "s", count: 64), roomChanged: true, timeChanged: true, assessment: true
         )
         snapshot.accentGradient = AccentGradient(
             stops: Array(repeating: 0xFFFFFF, count: 5), style: .angular, direction: .bottomRightToTopLeft

@@ -54,7 +54,8 @@ struct CourseTimeCard: View {
         let showsChangedTime = slot.hasChangedTime && !slot.isCancelled
         return cardSurface(
             tint: slot.color, date: slot.date, timeColor: showsChangedTime ? Color.changeInk : timeRangeColor,
-            title: Text(slot.title).strikethrough(slot.isCancelled), subtitle: subtitle(for: slot), opacity: opacity
+            title: CourseName(slot.title, isAssessment: slot.assessment != nil).strikethrough(slot.isCancelled),
+            subtitle: subtitle(for: slot), opacity: opacity
         ) {
             HStack(spacing: 3) {
                 if showsChangedTime {
@@ -81,7 +82,7 @@ struct CourseTimeCard: View {
     }
 
     private func cardSurface(
-        tint: Color, date: Date, timeColor: Color, title: Text, subtitle: Text, opacity: Double,
+        tint: Color, date: Date, timeColor: Color, title: some View, subtitle: Text, opacity: Double,
         @ViewBuilder time: () -> some View
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {
@@ -130,8 +131,7 @@ struct CourseTimeCard: View {
         let classroom = slot.room.trimmingCharacters(in: .whitespaces)
         let instructor = slot.instructor.trimmingCharacters(in: .whitespaces)
         let room = slot.hasChangedRoom && !classroom.isEmpty
-            ? Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(classroom).fontWeight(.semibold))")
-                .foregroundStyle(Color.changeInk)
+            ? Text.changedRoom(classroom)
             : Text(classroom)
         switch (classroom.isEmpty, instructor.isEmpty) {
         case (true, true): return Text(verbatim: "")

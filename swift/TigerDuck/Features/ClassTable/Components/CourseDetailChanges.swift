@@ -65,15 +65,17 @@ struct CourseDetailChanges: View {
                 parts.append((text: cancelled, spoken: cancelled))
                 continue
             }
-            if meeting.hasChangedRoom { parts.append((text: meeting.room, spoken: meeting.room)) }
+            if let room = meeting.changes.first(where: { $0.kind == .room })?.room { parts.append((text: room, spoken: room)) }
             if meeting.hasChangedTime {
                 let start = meeting.start.timeString, end = meeting.end.timeString
                 parts.append((text: TimeRange.text(start, end), spoken: TimeRange.spoken(start, end)))
             }
         }
-        var noteIds = Set<Int>()
-        parts += meetings.flatMap(\.notes).filter { noteIds.insert($0.id).inserted }
-            .compactMap { $0.note() }.map { (text: $0, spoken: $0) }
+        let held = meetings.filter { !$0.isCancelled }.flatMap(\.changes)
+        var shownIds = Set<Int>()
+        parts += (held.filter { $0.kind == .assessment } + held.filter { $0.kind == .online } + meetings.flatMap(\.notes))
+            .filter { shownIds.insert($0.id).inserted }
+            .compactMap(\.listedText).map { (text: $0, spoken: $0) }
         var seen = Set<String>()
         let shown = parts.filter { seen.insert($0.text).inserted }
         return (shown.map { $0.text }.joined(separator: " · "), shown.map { $0.spoken }.joined(separator: " · "))

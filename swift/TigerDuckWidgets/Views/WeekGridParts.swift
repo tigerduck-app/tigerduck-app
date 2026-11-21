@@ -98,7 +98,7 @@ struct WeekCourseBlock: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            Text(course.displayName)
+            CourseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
                 .font(.courseName(size, weight: .medium))
                 .strikethrough(isCancelled)
                 .foregroundStyle(tile.ink)
@@ -120,7 +120,8 @@ struct WeekCourseBlock: View {
         let time = (change?.start ?? times?.start).flatMap { start in
             (change?.end ?? times?.end).map { TimeRange.spoken(start, $0) }
         } ?? (isCancelled ? nil : TimeRange.partial(start: change?.start, end: change?.end))
-        return [course.displayName, time, isCancelled ? String(localized: "course_card_cancelled") : classroom]
+        let assessment = change?.assessment == true ? String(localized: "course_change_assessment") : nil
+        return [course.displayName, assessment, time, isCancelled ? String(localized: "course_card_cancelled") : classroom]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
