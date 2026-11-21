@@ -63,6 +63,8 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
   before pushing. CI's phone job runs iOS 27.0 only, and its iOS 18 job runs only the search
   suites and the calendar's VoiceOver tests; where iOS 26 or iOS 18 behavior is not run, say why
   in the pull request.
+- CI's iOS 18 job builds with Xcode 26, which gives up type-checking a long expression mixing
+  operators and conversions that Xcode 27 accepts: split such arithmetic into typed `let`s.
 - Tests follow the `writing-tests` skill. A test that starts a scroll or an animation waits for
   the outcome it asserts, not for the motion to end.
 - A CI job, checker or script change is tried against its bypasses: a renamed or commented-out
