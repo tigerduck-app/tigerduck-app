@@ -82,11 +82,13 @@ extension Color {
     }
 }
 
-extension Text {
-    static func courseName(_ name: String, isAssessment: Bool) -> Text {
-        courseName(name, assessmentInk: isAssessment ? .assessmentInk : nil)
+extension CourseName {
+    init(_ name: String, isAssessment: Bool) {
+        self.init(name, assessmentInk: isAssessment ? .assessmentInk : nil)
     }
+}
 
+extension Text {
     static func changedRoom(_ room: String) -> Text {
         Text("\(Image(systemName: "arrow.left.arrow.right")) \(Text(room).fontWeight(.semibold))")
             .foregroundStyle(Color.changeInk)

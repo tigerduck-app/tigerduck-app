@@ -21,7 +21,7 @@ struct MacClassTableCourseCell: View {
         let color = TigerDuckTheme.courseColor(for: course.courseNo)
         let ignored = viewModel.editor.ignoresAssignments(of: course.courseNo)
         return VStack(alignment: .leading, spacing: 3) {
-            Text.courseName(course.displayName, isAssessment: meeting?.assessment != nil)
+            CourseName(course.displayName, isAssessment: meeting?.assessment != nil)
                 .font(.callout.weight(.semibold))
                 .foregroundStyle(.primary)
                 .lineLimit(3)

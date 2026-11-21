@@ -54,7 +54,7 @@ struct CourseTimeCard: View {
         let showsChangedTime = slot.hasChangedTime && !slot.isCancelled
         return cardSurface(
             tint: slot.color, date: slot.date, timeColor: showsChangedTime ? Color.changeInk : timeRangeColor,
-            title: Text.courseName(slot.title, isAssessment: slot.assessment != nil).strikethrough(slot.isCancelled),
+            title: CourseName(slot.title, isAssessment: slot.assessment != nil).strikethrough(slot.isCancelled),
             subtitle: subtitle(for: slot), opacity: opacity
         ) {
             HStack(spacing: 3) {
@@ -82,7 +82,7 @@ struct CourseTimeCard: View {
     }
 
     private func cardSurface(
-        tint: Color, date: Date, timeColor: Color, title: Text, subtitle: Text, opacity: Double,
+        tint: Color, date: Date, timeColor: Color, title: some View, subtitle: Text, opacity: Double,
         @ViewBuilder time: () -> some View
     ) -> some View {
         HStack(alignment: .top, spacing: 10) {

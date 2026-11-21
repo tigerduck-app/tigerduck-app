@@ -22,7 +22,7 @@ struct CurrentClassCard: View {
                     .foregroundStyle(Color.textPrimary)
             }
 
-            Text.courseName(info.course.displayName, isAssessment: info.slot.assessment != nil)
+            CourseName(info.course.displayName, isAssessment: info.slot.assessment != nil)
                 .font(TigerDuckTheme.Typography.headline)
                 .foregroundStyle(Color.textPrimary)
                 .lineLimit(2)

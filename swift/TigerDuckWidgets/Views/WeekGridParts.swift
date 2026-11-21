@@ -98,7 +98,7 @@ struct WeekCourseBlock: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.7)
             }
-            Text.courseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
+            CourseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
                 .font(.courseName(size, weight: .medium))
                 .strikethrough(isCancelled)
                 .foregroundStyle(tile.ink)

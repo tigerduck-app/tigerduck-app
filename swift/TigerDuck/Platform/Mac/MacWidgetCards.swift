@@ -81,7 +81,7 @@ private struct TodayScheduleWidgetCard: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(secondary)
                 .frame(width: 48, alignment: .leading)
-            Text.courseName(slot.title, isAssessment: slot.assessment != nil)
+            CourseName(slot.title, isAssessment: slot.assessment != nil)
                 .font(.callout)
                 .foregroundStyle(primary)
                 .lineLimit(1)
@@ -133,13 +133,13 @@ private struct NextClassWidgetCard: View {
                     if target.slots.count >= 2 {
                         VStack(alignment: .leading, spacing: 2) {
                             ForEach(target.slots, id: \.courseKey) { slot in
-                                Text.courseName(slot.title, isAssessment: slot.assessment != nil)
+                                CourseName(slot.title, isAssessment: slot.assessment != nil)
                                     .font(.title3.bold())
                                     .lineLimit(1)
                             }
                         }
                     } else {
-                        Text.courseName(primary.title, isAssessment: primary.assessment != nil)
+                        CourseName(primary.title, isAssessment: primary.assessment != nil)
                             .font(.title3.bold())
                             .lineLimit(2)
                         let classroom = primary.room

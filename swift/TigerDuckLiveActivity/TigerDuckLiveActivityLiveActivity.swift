@@ -295,9 +295,9 @@ private func changeInk(_ scheme: ColorScheme) -> Color {
     scheme == .dark ? hexColor(0xFDBA74) : hexColor(0x7C2D12)
 }
 
-private func title(_ snapshot: LiveActivitySnapshot, on scheme: ColorScheme) -> Text {
+private func title(_ snapshot: LiveActivitySnapshot, on scheme: ColorScheme) -> CourseName {
     let ink = AssessmentInk.hex(isAssessment: snapshot.assessment == true, onDark: scheme == .dark)
-    return Text.courseName(snapshot.title, assessmentInk: ink.map { hexColor(Int($0)) })
+    return CourseName(snapshot.title, assessmentInk: ink.map { hexColor(Int($0)) })
 }
 
 private extension View {

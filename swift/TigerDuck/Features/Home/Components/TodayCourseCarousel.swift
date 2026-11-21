@@ -200,7 +200,7 @@ struct TodayCourseCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
             HStack {
-                Text.courseName(course.displayName, isAssessment: meetings.contains { $0.assessment != nil })
+                CourseName(course.displayName, isAssessment: meetings.contains { $0.assessment != nil })
                     .font(TigerDuckTheme.Typography.headline)
                     .foregroundStyle(Color.textPrimary)
                     .lineLimit(1)

@@ -78,7 +78,7 @@ struct NextClassMediumView: View {
         let timeChanged = (change?.start ?? change?.end) != nil
         return VStack(alignment: .leading, spacing: 0) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text.courseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
+                CourseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
                     .font(.courseName(nameSize, weight: .bold))
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -214,7 +214,7 @@ struct NextClassSmallView: View {
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(tile.secondaryInk)
                 .lineLimit(1)
-            Text.courseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
+            CourseName(course.displayName, assessmentInk: palette.assessmentInk(for: change))
                 .font(.courseName(nameSize, weight: .bold))
                 .foregroundStyle(tile.ink)
                 .lineLimit(2)

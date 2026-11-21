@@ -127,7 +127,7 @@ struct ConflictPairView: View {
         return GeometryReader { boxProxy in
             ZStack(alignment: labelAlignment) {
                 policy.classTableCourseFill(course.color)
-                Text.courseName(course.displayName, isAssessment: cluster.assessed.contains(course.courseNo))
+                CourseName(course.displayName, isAssessment: cluster.assessed.contains(course.courseNo))
                     .font(.system(size: cluster.metrics.courseNameSize, weight: policy.classTableCourseNameWeight))
                     .foregroundStyle(policy.classTableCourseTextColor)
                     .lineLimit(2)

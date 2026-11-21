@@ -76,7 +76,7 @@ struct AccessoryRectangularView: View {
         case .ongoing(let infos):
             let info = infos[0]
             VStack(alignment: .leading, spacing: 2) {
-                Text.courseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
+                CourseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
                 Text(info.classroom)
@@ -92,7 +92,7 @@ struct AccessoryRectangularView: View {
             VStack(alignment: .leading, spacing: 1) {
                 Text(info.day.headline())
                     .font(.caption2.weight(.bold))
-                Text.courseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
+                CourseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
                     .font(.caption.weight(.semibold))
                     .lineLimit(1)
                 HStack(spacing: 4) {

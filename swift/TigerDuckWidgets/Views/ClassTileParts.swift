@@ -37,7 +37,7 @@ struct NameRoomLine: View {
 
     var body: some View {
         HStack(spacing: 6) {
-            Text.courseName(name, assessmentInk: assessmentInk)
+            CourseName(name, assessmentInk: assessmentInk)
                 .font(nameFont)
                 .strikethrough(isCancelled)
                 .lineLimit(1)

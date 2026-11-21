@@ -172,7 +172,7 @@ struct WeekGridView: View {
         let top = offset > 0 ? height(of: offset, cellHeight) + spacing : 0
         let start = min(periodIndex + offset, periods.count)
         let meeting = meeting(of: course, weekday: weekday, periods: Array(periods[start..<min(start + span, periods.count)]))
-        return Text.courseName(course.displayName, assessmentInk: palette.assessmentInk(for: meeting.change))
+        return CourseName(course.displayName, assessmentInk: palette.assessmentInk(for: meeting.change))
             .font(.courseName(size - 1, weight: .medium))
             .foregroundStyle(tile.ink)
             .multilineTextAlignment(.center)

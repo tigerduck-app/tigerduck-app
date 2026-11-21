@@ -200,7 +200,7 @@ struct TimetableSoloCell: View {
                 }
             }
             .overlay {
-                Text.courseName(course.displayName, isAssessment: meeting?.assessment != nil)
+                CourseName(course.displayName, isAssessment: meeting?.assessment != nil)
                     .timetableBlockName(metrics: metrics, policy: policy, lineLimit: lineLimit, isCancelled: isCancelled)
                     .padding(.bottom, leavesBottomLine ? metrics.roomHintSize + 2 : 0)
                     .padding(.top, leavesTopLine ? metrics.roomHintSize + 2 : 0)
