@@ -84,8 +84,6 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
             .filter { !$0.changes.isEmpty }
     }
 
-    /// The classes of each meeting with a change other than a note on a day, as the day's slots
-    /// show them.
     static func changedClasses(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
         CourseMeeting.meetings(of: course, on: date, changes: changes)
             .filter { meeting in meeting.changes.contains { $0.kind != .note } }

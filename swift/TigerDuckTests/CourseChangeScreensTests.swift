@@ -201,8 +201,6 @@ struct CourseChangeScreensTests {
     }
 }
 
-/// The bands and dashes of an ink in a picture, in points: the pixels near the ink that differ from
-/// `plain`, the same view drawn without it, when given. With a text colour, also its lines.
 struct InkScan {
     struct Band {
         let height: CGFloat
