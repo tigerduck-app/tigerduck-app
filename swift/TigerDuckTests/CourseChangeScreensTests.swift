@@ -201,7 +201,6 @@ struct CourseChangeScreensTests {
     }
 }
 
-/// The lines of text and the bands and dashes of an ink in a picture, in points.
 private struct InkScan {
     struct Band {
         let height: CGFloat

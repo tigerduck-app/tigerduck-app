@@ -84,8 +84,6 @@ struct CourseTimeSlot: Identifiable, Equatable, TimedClass {
             .filter { !$0.changes.isEmpty }
     }
 
-    /// The classes of each meeting the school moved, cancelled or gave a new room on a day, as
-    /// the day's slots show them.
     static func changedClasses(of course: SDCourse, on date: Date, changes: CourseChanges = .cached) -> [CourseTimeSlot] {
         CourseMeeting.meetings(of: course, on: date, changes: changes)
             .filter { meeting in meeting.changes.contains { $0.kind != .note && $0.kind != .assessment } }
