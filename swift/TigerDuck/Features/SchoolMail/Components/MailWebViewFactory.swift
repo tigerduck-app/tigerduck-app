@@ -92,6 +92,12 @@ enum MailWebViewFactory {
     /// The element the text size scales. The sanitizer keeps no `id` of the sender's.
     static let zoomedElementID = "mail"
 
+    /// The mail's first line sits at the page's top: the elements that open it, each the first child
+    /// of the one before, inside wrappers such as a `div` or `table`, drop their top margin, even an
+    /// inline one.
+    static let firstLineAtTop =
+        "#\(zoomedElementID) :first-child:not(#\(zoomedElementID) :not(:first-child) *){margin-top:0!important;}"
+
     /// CSS `zoom` reflows the text to the page's width, where `WKWebView.pageZoom` on iOS only
     /// magnifies it past the edge, as `BrowserPageScripts.zoom` notes.
     static func document(
@@ -107,7 +113,7 @@ enum MailWebViewFactory {
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \(imageSources); style-src 'unsafe-inline'">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-        <style>:root{color-scheme:\(scheme);}html,body{margin:0;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}body{\(page)}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
+        <style>:root{color-scheme:\(scheme);}html,body{margin:0;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}body{\(page)}img{max-width:100%;height:auto;}table{max-width:100%;}\(firstLineAtTop)</style>
         </head><body><div id="\(zoomedElementID)" style="zoom:\(textZoom)%">\(bodyHTML)</div></body></html>
         """
     }

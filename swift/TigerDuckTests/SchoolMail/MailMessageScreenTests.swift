@@ -119,12 +119,14 @@ struct MailMessageScreenTests {
             let frame = web.convert(web.bounds, to: window)
             #expect(frame.minX == 0 && frame.maxX == Self.width, "body at \(frame)")
             #expect(h.model.formattedOnLightPage == page.lightPage)
-            let inset = try #require(
+            let first = try #require(
                 try await web.callAsyncJavaScript(
-                    "return document.querySelector('p').getBoundingClientRect().left;", in: nil, contentWorld: .defaultClient
-                ) as? Double
+                    "const r = document.querySelector('p').getBoundingClientRect(); return [r.left, r.top];",
+                    in: nil, contentWorld: .defaultClient
+                ) as? [Double]
             )
-            #expect(inset == Double(MailMessageView.sideInset))
+            #expect(first[0] == Double(MailMessageView.sideInset))
+            #expect(first[1] == (page.lightPage ? Double(MailMessageView.sideInset) : 0), "the first line's top")
             try await Task.sleep(for: .milliseconds(300))
             Self.save(window, as: page.name)
         }

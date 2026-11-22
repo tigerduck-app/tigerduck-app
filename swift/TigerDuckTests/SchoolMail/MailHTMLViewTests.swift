@@ -95,6 +95,26 @@ struct MailHTMLViewTests {
         #expect(try await Self.settledHeight(of: page) < long / 4)
     }
 
+    @Test("the first line starts at the page's top: the leading chain of first children loses its top margin, nothing else")
+    func theFirstLineStartsAtThePagesTop() async throws {
+        let page = Page()
+        page.html = """
+            <div id="wrapper" style="margin-top:20px"><table><tr><td><p id="first">第一行</p><p id="second">第二行</p></td></tr></table></div>\
+            <blockquote id="quote"><p id="quoted">引文</p></blockquote>
+            """
+        let window = try Self.show(Host(page: page))
+        defer { window.isHidden = true }
+        try await waitUntil { page.height > 50 }
+        let web = try #require(Self.webView(in: window))
+        let probe = """
+            const margin = id => getComputedStyle(document.getElementById(id)).marginTop;
+            return ["wrapper", "first", "second", "quote", "quoted"].map(margin);
+            """
+        let found = try #require(try await web.callAsyncJavaScript(probe, in: nil, contentWorld: .defaultClient) as? [String])
+        #expect(found.prefix(2).allSatisfy { $0 == "0px" }, "the first line's wrapper and paragraph: \(found)")
+        #expect(found.dropFirst(2).allSatisfy { $0 != "0px" }, "margins past the first line: \(found)")
+    }
+
     static let png: String = {
         let format = UIGraphicsImageRendererFormat()
         format.scale = 1
