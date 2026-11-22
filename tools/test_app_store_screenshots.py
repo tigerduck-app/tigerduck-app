@@ -52,6 +52,14 @@ class SizeTests(unittest.TestCase):
         self.assertEqual(len(shots.size_problems(self.folder, IPHONE)), 1)
 
 
+class SkippedTests(unittest.TestCase):
+    def test_every_skipped_test_exists(self):
+        source = (shots.ROOT / "swift/TigerDuckUITests/AppStoreScreenshotTests.swift").read_text()
+        for device in shots.DEVICES:
+            for name in device.skipped:
+                self.assertIn(f"func {name}()", source, device.slug)
+
+
 class ClockTests(unittest.TestCase):
     def test_every_day_of_a_week_pins_its_tuesday(self):
         for day in range(23, 30):

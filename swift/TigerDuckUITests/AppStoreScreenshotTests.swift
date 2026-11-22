@@ -91,7 +91,6 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     @MainActor
     func test08Calendar() throws {
-        try skipOnPad()
         openFeature("feature_calendar")
         // Opened from More, the month pager can show a month far from today until Today is tapped.
         tapButton("calendar_today")
@@ -100,14 +99,12 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     @MainActor
     func test09LibraryQR() throws {
-        try skipOnPad()
         openFeature("feature_library")
         capture("09-library-qr")
     }
 
     @MainActor
     func test10LiveActivityLockScreen() throws {
-        try skipOnPad()
         XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         XCTAssertTrue(wait(timeout: 30) { self.liveActivity.exists }, "no Live Activity on the Lock Screen")
@@ -124,7 +121,6 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     @MainActor
     func test11LiveActivityDynamicIsland() throws {
-        try skipOnPad()
         XCUIDevice.shared.press(.home)
         XCTAssertTrue(wait(timeout: 30) { self.liveActivity.exists }, "no Live Activity in the Dynamic Island")
         liveActivity.press(forDuration: 1)
@@ -134,14 +130,12 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     @MainActor
     func test12EmptyClassrooms() throws {
-        try skipOnPad()
         openFeature("feature_empty_classroom")
         capture("12-empty-classrooms")
     }
 
     @MainActor
     func test13Clubs() throws {
-        try skipOnPad()
         openTab("feature_class_table_short")
         tap(app.buttons[text("class_table_more_actions")].firstMatch)
         tapButton("class_table_subscribe_clubs")
@@ -228,10 +222,6 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     private func courseButton(_ name: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "label CONTAINS %@", name)).firstMatch
-    }
-
-    private func skipOnPad() throws {
-        try XCTSkipIf(UIDevice.isPad, "the iPad takes the first seven screenshots")
     }
 
     // MARK: - Helpers

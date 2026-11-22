@@ -47,21 +47,29 @@ class Device:
     name: str
     platform: str
     sizes: frozenset[tuple[int, int]]
+    # AppStoreScreenshotTests' tests whose screens the device leaves out.
+    skipped: tuple[str, ...] = ()
 
 
+LIVE_ACTIVITY = ("test10LiveActivityLockScreen", "test11LiveActivityDynamicIsland")
 # The portrait sizes each simulator gives, among those App Store Connect takes for its slot:
 # https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications
 DEVICES = (
     Device("iphone-18-pro", "iPhone 18 Pro", "iOS", frozenset({(1206, 2622)})),
-    Device("iphone-duo", "iPhone Duo", "iOS", frozenset({(1398, 2034), (2007, 2853)})),
-    Device("ipad-pro-13", "iPad Pro 13-inch (M5)", "iOS", frozenset({(2064, 2752)})),
+    # The simulator opens on the cover screen, which shows the running Live Activity neither on the
+    # Lock Screen nor beside the status bar, and simctl cannot unfold it.
+    Device("iphone-duo", "iPhone Duo", "iOS", frozenset({(1398, 2034), (2007, 2853)}), LIVE_ACTIVITY),
+    Device("ipad-pro-13", "iPad Pro 13-inch (M5)", "iOS", frozenset({(2064, 2752)}), (
+        "test08Calendar", "test09LibraryQR", *LIVE_ACTIVITY, "test12EmptyClassrooms", "test13Clubs",
+    )),
     Device("watch-46mm", "Apple Watch Series 12 (46mm)", "watchOS", frozenset({(416, 496)})),
 )
 # The phone the Watch pairs with and takes its data from.
 WATCH_PHONE = DEVICES[0]
 LANGUAGES = {"zh-Hant": "zh_TW", "en": "en_US"}
 # An ISO date would also pin the iPad's date, but its status bar then shows the date in English and
-# at times with the wrong weekday ("Fri Nov 24" for Tuesday, 24 November 2026).
+# at times with the wrong weekday ("Fri Nov 24" for Tuesday, 24 November 2026). Under this override
+# the Lock Screen shows 09:41 on Saturday, 1 January.
 STATUS_BAR = [
     "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
     "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "discharging", "--batteryLevel", "100",
@@ -168,6 +176,7 @@ def prepare(udid: str, device: Device, language: str) -> None:
     set_language(udid, language, LANGUAGES[language])
     if device.platform == "iOS":
         simctl("ui", udid, "appearance", "dark")
+        simctl("status_bar", udid, "clear")
         simctl("status_bar", udid, "override", *STATUS_BAR)
 
 
@@ -196,11 +205,14 @@ def build(scheme: str, udid: str, derived_data: Path, logs: Path) -> Path:
     return runs[-1]
 
 
-def run_tests(xctestrun: Path, udid: str, test: str, folder: Path, clock: str, log: Path) -> bool:
+def run_tests(
+    xctestrun: Path, udid: str, test: str, skipped: tuple[str, ...], folder: Path, clock: str, log: Path,
+) -> bool:
     env = {**os.environ, "TEST_RUNNER_SCREENSHOTS_DIR": str(folder), "TEST_RUNNER_SCREENSHOTS_CLOCK": clock}
     arguments = [
         "test-without-building", "-xctestrun", str(xctestrun), "-destination", f"id={udid}",
-        f"-only-testing:{test}", "-parallel-testing-enabled", "NO",
+        f"-only-testing:{test}", *(f"-skip-testing:{test}/{name}" for name in skipped),
+        "-parallel-testing-enabled", "NO",
     ]
     return xcodebuild(arguments, log, env)
 
@@ -253,11 +265,15 @@ def main() -> int:
             if device.platform == "watchOS":
                 simctl("uninstall", udid, WATCH_APP, check=False)
                 launch_phone_app(udids[WATCH_PHONE.slug], clock)
-                passed = run_tests(watch_run, udid, "TigerDuckWatch Watch AppUITests/WatchScreenshotTests", folder, clock, log)
+                passed = run_tests(
+                    watch_run, udid, "TigerDuckWatch Watch AppUITests/WatchScreenshotTests", (), folder, clock, log,
+                )
             else:
                 simctl("uninstall", udid, APP, check=False)
                 simctl("keychain", udid, "reset")
-                passed = run_tests(phone_run, udid, "TigerDuckUITests/AppStoreScreenshotTests", folder, clock, log)
+                passed = run_tests(
+                    phone_run, udid, "TigerDuckUITests/AppStoreScreenshotTests", device.skipped, folder, clock, log,
+                )
             if not passed:
                 problems.append(f"{device.name}, {language}: a test failed; see {log}")
             problems += size_problems(folder, device)
