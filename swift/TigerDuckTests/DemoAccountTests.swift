@@ -46,7 +46,8 @@ struct DemoAccountTests {
         var clubs: [ClubCard] = []
         var clubActivities: [ClubActivity] = []
         var subscribedClubs: [Int] = []
-        var clubsDropped = 0
+        var droppedClubs: [Int] = []
+        var servicesSignedOut = 0
     }
 
     @MainActor
@@ -86,7 +87,9 @@ struct DemoAccountTests {
                 calls.clubs = clubs
                 calls.clubActivities = activities
             },
-            dropClubs: { calls.clubsDropped += 1 },
+            dropClubs: { ids, _ in calls.droppedClubs += ids },
+            dropScores: { NTUSTScoreService.invalidateCache(studentId: $0, files: ScoreReportFiles(folders: cache.folders)) },
+            signOutServices: { calls.servicesSignedOut += 1 },
             subscribeClub: { id, _ in calls.subscribedClubs.append(id) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
             libraryIsKept: { false },
@@ -333,12 +336,14 @@ struct DemoAccountTests {
         #expect(folder.cache.courses.loadCourses(semester: CourseSelectionService.currentSemesterCode()).count == 5)
     }
 
-    @Test("the key kept without demo credentials ends the demo, its course changes and clubs once the Keychain reads back")
-    func theKeyWithoutCredentialsEndsTheDemo() {
+    @Test("the key kept without demo credentials ends the demo and all it kept once the Keychain reads back")
+    func theKeyWithoutCredentialsEndsTheDemo() throws {
         let folder = Folder()
         let calls = Calls()
         let demo = Self.account(folder, calls: calls)
-        demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: AccountSession(signIns: SignInSeries())))
+        let scores = ScoreReportFiles(folders: folder.cache.folders)
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) != nil)
         let keychain = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
         let launch = AccountSession(signIns: SignInSeries())
 
@@ -350,8 +355,33 @@ struct DemoAccountTests {
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
         #expect(!launch.signIns.currentSignIn.isDemo)
         #expect(!Defaults[folder.demoSignedIn])
-        #expect(calls.courseChanges == [Data()])
-        #expect(calls.clubsDropped == 1)
+        #expect(calls.courseChanges.last == Data())
+        #expect(calls.droppedClubs == [990001, 990002])
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) == nil)
+        #expect(calls.servicesSignedOut == 1)
+    }
+
+    @Test("the demo ended at launch drops its own clubs and keeps an account's subscription and unsent mark")
+    func theEndedDemoKeepsAnAccountsClubs() async throws {
+        try await withExclusiveRealDefaults {
+            let subscriptions = ClubSubscriptions.shared
+            subscriptions.forget()
+            defer { subscriptions.forget() }
+            let launch = AccountSession(signIns: SignInSeries())
+            for id in [93, 990001, 990002] { subscriptions.subscribe(id, for: launch.signIns.currentSignIn) }
+            let folder = Folder()
+            var demo = Self.account(folder)
+            demo.stores.dropClubs = DemoStores().dropClubs
+            demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+
+            SecureStore.$sharedForTesting.withValue(LockablePhoneKeychain()) { demo.resume(in: launch) }
+
+            #expect(!Defaults[folder.demoSignedIn])
+            #expect(subscriptions.subscribedIDs == [93])
+            let saved = try #require(Defaults[.clubSubscriptions])
+            #expect(ClubSubscriptionsDocument(json: saved).subscribedIDs == [93])
+            #expect(subscriptions.hasUnsentChanges)
+        }
     }
 
     @Test("the demo timetable is there in either course language, each in its own")
@@ -374,9 +404,11 @@ struct DemoAccountTests {
     @Test("signing out of the demo signs out the library it signed in, and the next launch is no demo")
     func signingOutOfTheDemoSignsOutItsLibrary() async {
         let folder = Folder()
+        var demo = Self.account(folder)
+        demo.stores.signOutServices = DemoStores().signOutServices
         let auth = AuthService(
             session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
-            notificationCenter: NotificationCenter(), endSchoolSession: { _ in }, demo: Self.account(folder)
+            notificationCenter: NotificationCenter(), endSchoolSession: { _ in }, demo: demo
         )
         #if os(iOS)
         auth.accountNotifications = DeliveredNotificationsStub()

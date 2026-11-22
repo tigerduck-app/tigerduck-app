@@ -136,7 +136,7 @@ struct DemoFeatureDataTests {
             directory.show(clubs)
             feed.show(activities)
         }
-        account.stores.dropClubs = {
+        account.stores.dropClubs = { _, _ in
             directory.showStored()
             feed.showStored()
         }
@@ -150,7 +150,7 @@ struct DemoFeatureDataTests {
         #expect(feed.activities.count == 2)
         #expect(SettingsAPIStub.requests(under: base).isEmpty)
 
-        SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { account.leave() }
+        SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { account.leave(for: testSignIn) }
         #expect(directory.clubs.isEmpty)
         #expect(feed.activities.isEmpty)
     }
@@ -260,7 +260,7 @@ struct DemoFeatureDataTests {
             #expect(!CourseChanges.cached.days(courseNo: "CS3005301").isEmpty)
             #expect(SettingsAPIStub.requests(under: base).isEmpty)
 
-            SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { account.leave() }
+            SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { account.leave(for: testSignIn) }
             #expect(CourseChanges.cached == .empty)
             #expect(Defaults[.courseChangesETag].isEmpty)
         }

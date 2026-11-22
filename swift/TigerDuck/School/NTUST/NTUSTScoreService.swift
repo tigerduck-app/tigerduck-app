@@ -72,8 +72,8 @@ enum NTUSTScoreService {
         files.saveScoreReport(report, studentId: studentId)
     }
 
-    static func invalidateCache(studentId: String) {
-        ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId)
+    static func invalidateCache(studentId: String, files: ScoreReportFiles = .shared) {
+        files.invalidateScoreReport(studentId: studentId)
     }
 
     private static func fetchHTML(

@@ -52,9 +52,8 @@ struct DemoAccount: AccountScoped {
         if kept, !current.isDemo {
             write(fixture, for: startSignIn(in: session))
         } else if !kept, Defaults[stores.demoSignedIn] || current.isDemo {
-            Defaults.reset(stores.demoSignedIn)
-            dropShownData()
             if current.isDemo { session.endSignIn() }
+            leave(for: session.signIns.currentSignIn)
         }
     }
 
@@ -73,13 +72,15 @@ struct DemoAccount: AccountScoped {
         Defaults.reset(.demoSignedIn)
     }
 
-    func leave() {
+    /// Ends what the demo keeps outside the stores a sign-out clears, writing for `signIn`, the one
+    /// after the demo's: the public course-change feed, its clubs, shown in memory, with their
+    /// subscriptions, its transcript, and the library and mail sign-ins it made.
+    func leave(for signIn: SignIn) {
         Defaults.reset(stores.demoSignedIn)
-        dropShownData()
-        if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
-        #if os(iOS)
-        if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
-        #endif
+        stores.keepCourseChanges(Data())
+        stores.dropClubs((fixture?.clubs ?? []).map(\.id), signIn)
+        if let fixture { stores.dropScores(fixture.normalizedStudentId) }
+        stores.signOutServices()
     }
 
     func write(_ fixture: DemoFixture, for signIn: SignIn) {
@@ -106,13 +107,6 @@ struct DemoAccount: AccountScoped {
         }
         showClubs(of: fixture)
         for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
-    }
-
-    /// What the demo keeps outside the stores a sign-out clears: the public course-change feed, and
-    /// the clubs, shown in memory, with their subscriptions.
-    private func dropShownData() {
-        stores.keepCourseChanges(Data())
-        stores.dropClubs()
     }
 
     /// The clubs live in memory only, so a launch behind the lock screen, which writes nothing else,
@@ -184,10 +178,18 @@ struct DemoStores {
         ClubDirectory.shared.show($0)
         ClubActivities.shared.show($1)
     }
-    var dropClubs: () -> Void = {
-        ClubSubscriptions.shared.forget()
+    var dropClubs: (_ ids: [Int], _ signIn: SignIn) -> Void = {
+        ClubSubscriptions.shared.forget($0, for: $1)
         ClubDirectory.shared.showStored()
         ClubActivities.shared.showStored()
+    }
+    var dropScores: (_ studentId: String) -> Void = { NTUSTScoreService.invalidateCache(studentId: $0) }
+    /// The library and mail sign-ins, when they are the demo's.
+    var signOutServices: () -> Void = {
+        if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
+        #if os(iOS)
+        if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
+        #endif
     }
     var subscribeClub: (_ id: Int, _ signIn: SignIn) -> Void = { ClubSubscriptions.shared.subscribe($0, for: $1) }
     var turnOffSync: (SignIn) -> Void = { CloudSyncPreference.turnOffForDemo($0) }
