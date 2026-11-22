@@ -140,9 +140,9 @@ final class BrowserPage {
         failure == nil && signIn == .idle && url != nil
     }
 
-    func zoomIn() { BrowserZoom.larger(than: zoom).map(setZoom) }
-    func zoomOut() { BrowserZoom.smaller(than: zoom).map(setZoom) }
-    func resetZoom() { setZoom(BrowserZoom.standard) }
+    func zoomIn() { PageZoom.browser.larger(than: zoom).map(setZoom) }
+    func zoomOut() { PageZoom.browser.smaller(than: zoom).map(setZoom) }
+    func resetZoom() { setZoom(PageZoom.standard) }
 
     /// A page opened at risk keeps its host's saved zoom and desktop choice, which outlive its store.
     private func setZoom(_ percent: Int) {

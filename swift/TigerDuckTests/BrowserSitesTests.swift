@@ -6,15 +6,15 @@ import Testing
 
 struct BrowserSitesTests {
     @Test func zoomStepsUpAndDownAndStopsAtTheEnds() {
-        #expect(BrowserZoom.larger(than: 100) == 115)
-        #expect(BrowserZoom.smaller(than: 100) == 85)
-        #expect(BrowserZoom.larger(than: 200) == nil)
-        #expect(BrowserZoom.smaller(than: 50) == nil)
+        #expect(PageZoom.browser.larger(than: 100) == 115)
+        #expect(PageZoom.browser.smaller(than: 100) == 85)
+        #expect(PageZoom.browser.larger(than: 200) == nil)
+        #expect(PageZoom.browser.smaller(than: 50) == nil)
     }
 
     @Test func aZoomBetweenStepsGoesToTheNearestStepThatWay() {
-        #expect(BrowserZoom.larger(than: 110) == 115)
-        #expect(BrowserZoom.smaller(than: 110) == 100)
+        #expect(PageZoom.browser.larger(than: 110) == 115)
+        #expect(PageZoom.browser.smaller(than: 110) == 100)
     }
 
     @Test func eachSiteKeepsItsOwnZoomAndAHundredLeavesNoEntry() {

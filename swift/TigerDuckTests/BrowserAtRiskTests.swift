@@ -178,7 +178,7 @@ struct BrowserAtRiskTests {
         let start = URL(string: "https://\(host)/page")!
         defer {
             BrowserSites.change(for: AccountSession.school.currentSignIn) {
-                $0.setZoom(BrowserZoom.standard, for: host)
+                $0.setZoom(PageZoom.standard, for: host)
                 $0.setDesktop(false, for: host)
             }
         }
@@ -189,14 +189,14 @@ struct BrowserAtRiskTests {
         #expect(page.host == host)
         page.zoomIn()
         page.setDesktopSite(true)
-        #expect(BrowserSites.stored.zoom(for: host) == BrowserZoom.standard)
+        #expect(BrowserSites.stored.zoom(for: host) == PageZoom.standard)
         #expect(!BrowserSites.stored.isDesktop(host))
 
         let own = BrowserPage()
         _ = BrowserNavigator(page: own, auth: nil).makeView(opening: start)
         own.signIn.load = { _ in }
         own.zoomIn()
-        #expect(BrowserSites.stored.zoom(for: host) != BrowserZoom.standard)
+        #expect(BrowserSites.stored.zoom(for: host) != PageZoom.standard)
     }
 
     @Test("no cookie a page opened at risk sets reaches the browser's store, the app's jar or a sign-in")

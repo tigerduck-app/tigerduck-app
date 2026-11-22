@@ -1,17 +1,6 @@
 import Defaults
 import Foundation
 
-/// Page zoom in the TigerDuck browser, as a percentage, in Safari's steps.
-nonisolated enum BrowserZoom {
-    static let steps = [50, 75, 85, 100, 115, 125, 150, 175, 200]
-    static let standard = 100
-
-    /// The next step up, or nil at the largest; a value between steps goes to the one above it.
-    static func larger(than percent: Int) -> Int? { steps.first { $0 > percent } }
-
-    static func smaller(than percent: Int) -> Int? { steps.last { $0 < percent } }
-}
-
 /// Each site's zoom and desktop-site choice, by host. They are the student's browsing, so
 /// `BrowserData.reset()` forgets them with the browser's other data.
 nonisolated struct BrowserSites: Equatable {
@@ -19,11 +8,11 @@ nonisolated struct BrowserSites: Equatable {
     var desktop: Set<String> = []
 
     func zoom(for host: String) -> Int {
-        min(max(zoom[key(host)] ?? BrowserZoom.standard, BrowserZoom.steps[0]), BrowserZoom.steps[BrowserZoom.steps.count - 1])
+        PageZoom.browser.clamped(zoom[key(host)] ?? PageZoom.standard)
     }
 
     mutating func setZoom(_ percent: Int, for host: String) {
-        zoom[key(host)] = percent == BrowserZoom.standard ? nil : percent
+        zoom[key(host)] = percent == PageZoom.standard ? nil : percent
     }
 
     func isDesktop(_ host: String) -> Bool { desktop.contains(key(host)) }
@@ -52,6 +41,6 @@ nonisolated struct BrowserSites: Equatable {
 }
 
 nonisolated struct BrowserSiteSetting: Equatable {
-    var zoom = BrowserZoom.standard
+    var zoom = PageZoom.standard
     var isDesktop = false
 }
