@@ -109,7 +109,7 @@ struct TimeSliderSection: View {
     }
 
     private var timeLabelString: String {
-        let isToday = TaipeiTime.calendar.isDateInToday(viewModel.selectedTime)
+        let isToday = viewModel.selectedTime.isToday
         if isToday {
             return Self.timeFormatter.string(from: viewModel.selectedTime)
         } else {
