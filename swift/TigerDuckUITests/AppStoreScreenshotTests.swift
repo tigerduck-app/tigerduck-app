@@ -119,7 +119,8 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     @MainActor
     func test11LiveActivityDynamicIsland() throws {
-        XCUIDevice.shared.press(.home)
+        // Over the Home Screen the island would sit above the UI test runner's icon.
+        XCUIApplication(bundleIdentifier: "com.apple.Preferences").activate()
         XCTAssertTrue(wait(timeout: 30) { self.liveActivity.exists }, "no Live Activity in the Dynamic Island")
         liveActivity.press(forDuration: 1)
         capture("11-live-activity-dynamic-island")
