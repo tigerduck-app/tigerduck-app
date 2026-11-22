@@ -174,11 +174,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         let password = app.secureTextFields.firstMatch
         password.tap()
         password.typeText(account.password + "\n")
-        tapButton("onboarding_skip_for_now")
-        tapButton("onboarding_start_button")
+        tapButtonPastPasswordOffer("onboarding_skip_for_now")
+        tapButtonPastPasswordOffer("onboarding_start_button")
         XCTAssertTrue(home.waitForExistence(timeout: 30))
-        // iOS offers to save the password in a sheet over the app after the sign-in form goes, at
-        // a moment no element marks; a new launch starts without it.
+        // An offer that has not come yet can come over Home; a new launch starts without it.
         app.terminate()
         app.launch()
         XCTAssertTrue(home.waitForExistence(timeout: 30))
@@ -241,15 +240,30 @@ final class AppStoreScreenshotTests: XCTestCase {
     }
 
     /// The onboarding pages keep their neighbors' buttons in the tree.
+    private func shownButton(_ key: String) -> XCUIElement? {
+        app.buttons.matching(NSPredicate(format: "label == %@", text(key))).allElementsBoundByIndex
+            .first { $0.isHittable && $0.isEnabled }
+    }
+
     private func tapButton(_ key: String, file: StaticString = #filePath, line: UInt = #line) {
-        let buttons = app.buttons.matching(NSPredicate(format: "label == %@", text(key)))
         var shown: XCUIElement?
         let found = wait {
-            shown = buttons.allElementsBoundByIndex.first { $0.isHittable && $0.isEnabled }
+            shown = self.shownButton(key)
             return shown != nil
         }
         XCTAssertTrue(found, "no \(key) button on screen", file: file, line: line)
         shown?.tap()
+    }
+
+    /// After the sign-in, iOS offers to save the password in an alert, at a moment no element marks;
+    /// Not Now is its first button.
+    private func tapButtonPastPasswordOffer(_ key: String) {
+        let offer = app.alerts.firstMatch
+        _ = wait { offer.exists || self.shownButton(key) != nil }
+        if offer.exists {
+            offer.buttons.firstMatch.tap()
+        }
+        tapButton(key)
     }
 
     private func tap(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
