@@ -10,8 +10,8 @@ reused after, and both languages run on it in turn:
     python3 tools/app_store_screenshots.py
     python3 tools/app_store_screenshots.py --device iphone-18-pro --language en
 
-The shots land in screenshots/<device>/<language>/<NN-name>.png. The app's clock and the status
-bar stand at 09:41 on Tuesday of the current Taipei week. Needs Xcode 27 (from
+The shots land in screenshots/<device>/<language>/<NN-name>.png. The app's clock stands at 09:41
+on Tuesday of the current Taipei week, and the status bar at 09:41. Needs Xcode 27 (from
 `xcode-select -p` or DEVELOPER_DIR) with the iOS and watchOS simulators. Exits nonzero when a test
 fails or a PNG is not its device's portrait size in DEVICES; the tests that failed leave
 <test>-failed.txt with the screen's accessibility tree beside the shots.
@@ -60,9 +60,11 @@ DEVICES = (
 # The phone the Watch pairs with and takes its data from.
 WATCH_PHONE = DEVICES[0]
 LANGUAGES = {"zh-Hant": "zh_TW", "en": "en_US"}
+# An ISO date would also pin the iPad's date, but its status bar then shows the date in English and
+# at times with the wrong weekday ("Fri Nov 24" for Tuesday, 24 November 2026).
 STATUS_BAR = [
-    "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3", "--cellularMode", "active",
-    "--cellularBars", "4", "--batteryState", "discharging", "--batteryLevel", "100",
+    "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
+    "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "discharging", "--batteryLevel", "100",
 ]
 
 
@@ -162,14 +164,11 @@ def set_language(udid: str, language: str, locale: str) -> None:
     boot(udid)
 
 
-def prepare(udid: str, device: Device, language: str, instant: datetime) -> None:
+def prepare(udid: str, device: Device, language: str) -> None:
     set_language(udid, language, LANGUAGES[language])
     if device.platform == "iOS":
         simctl("ui", udid, "appearance", "dark")
-        # simctl takes an ISO date only with milliseconds and an offset, and shows it in the Mac's
-        # time zone, which simulators follow; a date also sets the one the iPad's status bar shows.
-        shown = datetime.combine(instant.date(), instant.time()).astimezone()
-        simctl("status_bar", udid, "override", "--time", shown.isoformat(timespec="milliseconds"), *STATUS_BAR)
+        simctl("status_bar", udid, "override", *STATUS_BAR)
 
 
 def xcodebuild(arguments: list[str], log: Path, env: dict[str, str] | None = None) -> bool:
@@ -231,8 +230,7 @@ def main() -> int:
         slugs.add(WATCH_PHONE.slug)
     devices = [d for d in DEVICES if d.slug in slugs]
     languages = args.language or list(LANGUAGES)
-    instant = pinned_clock(datetime.now(TAIPEI).date())
-    clock = clock_argument(instant)
+    clock = clock_argument(pinned_clock(datetime.now(TAIPEI).date()))
     logs = args.output / "logs"
 
     udids = {device.slug: simulator(device) for device in devices}
@@ -247,7 +245,7 @@ def main() -> int:
         for device in devices:
             udid = udids[device.slug]
             print(f"{device.name}, {language}")
-            prepare(udid, device, language, instant)
+            prepare(udid, device, language)
             folder = args.output / device.slug / language
             shutil.rmtree(folder, ignore_errors=True)
             folder.mkdir(parents=True)
