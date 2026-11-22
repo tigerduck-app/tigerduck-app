@@ -102,7 +102,7 @@ struct CourseTimeCard: View {
                         .minimumScaleFactor(0.7)
                         .layoutPriority(1)
                     Spacer(minLength: 4)
-                    if !TaipeiTime.calendar.isDateInToday(date) {
+                    if !date.isToday {
                         Self.dateLabel(from: date)
                     }
                 }

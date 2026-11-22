@@ -87,7 +87,7 @@ extension Date {
     var scheduleWeekday: Int { weekdayIndex + 1 }
 
     var isToday: Bool {
-        Self.scheduleCalendar.isDateInToday(self)
+        isSameDay(as: AppClock.now())
     }
 
     func isSameDay(as other: Date) -> Bool {

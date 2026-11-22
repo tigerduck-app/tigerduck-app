@@ -27,6 +27,7 @@ struct Pager<Page: View>: View {
     @ViewBuilder let page: (Int) -> Page
 
     @Environment(\.displayScale) private var displayScale
+    @State private var hasAppeared = false
 
     private struct Spot: Equatable {
         let step: Int
@@ -39,34 +40,43 @@ struct Pager<Page: View>: View {
             // UIKit lays the scroll view out in whole pixels, and pages of any other width drift off
             // its paging.
             let width = (proxy.size.width * displayScale).rounded() / displayScale
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(0..<count, id: \.self) { step in
-                        Group {
-                            if abs(step - index) <= 1 || step == position.settledPage {
-                                page(step)
-                            } else {
-                                Color.clear
+            // A page pushed onto a navigation stack is laid out at other widths before it appears, and
+            // scroll views made for those widths report scrolls to far pages.
+            if hasAppeared {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(0..<count, id: \.self) { step in
+                            Group {
+                                if abs(step - index) <= 1 || step == position.settledPage {
+                                    page(step)
+                                } else {
+                                    Color.clear
+                                }
                             }
+                            .frame(width: width, height: proxy.size.height)
+                            .accessibilityHidden(step != index)
                         }
-                        .frame(width: width, height: proxy.size.height)
-                        .accessibilityHidden(step != index)
                     }
+                    .scrollTargetLayout()
+                    .background(ForwardPagingLock(isLocked: lockedPages.contains(position.settledPage)))
                 }
-                .scrollTargetLayout()
-                .background(ForwardPagingLock(isLocked: lockedPages.contains(position.settledPage)))
+                .scrollTargetBehavior(.paging)
+                .scrollPosition($position.scroll)
+                // The scroll position's view identity follows only a drag, not VoiceOver's
+                // three-finger swipe; the visible rect follows every scroll.
+                .onScrollGeometryChange(for: Spot.self, of: Self.spot(in:)) { _, spot in
+                    follow(spot)
+                }
+                .scrollIndicators(.hidden)
+                // A lazy stack scrolled to a far page on appear passes the first page on its way there.
+                .defaultScrollAnchor(UnitPoint(x: Double(position.settledPage) / Double(max(count - 1, 1)), y: 0), for: .initialOffset)
+                // A lazy stack that measured pages at another width misjudges its length and keeps its
+                // offset, landing on a far page, so each width gets a new scroll view on the settled page.
+                .id(width)
+                .transaction(value: width) { $0.animation = nil }
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition($position.scroll)
-            // The scroll position's view identity follows only a drag, not VoiceOver's
-            // three-finger swipe; the visible rect follows every scroll.
-            .onScrollGeometryChange(for: Spot.self, of: Self.spot(in:)) { _, spot in
-                follow(spot)
-            }
-            .scrollIndicators(.hidden)
-            // A lazy stack scrolled to a far page on appear passes the first page on its way there.
-            .defaultScrollAnchor(UnitPoint(x: Double(position.settledPage) / Double(max(count - 1, 1)), y: 0), for: .initialOffset)
         }
+        .onAppear { withTransaction(\.disablesAnimations, true) { hasAppeared = true } }
     }
 
     /// VoiceOver's three-finger swipe moves the pager without the pan gesture that
