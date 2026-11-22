@@ -174,6 +174,10 @@ struct CalendarMonthSwipeScreenTests {
         }
     }
 
+    static func pager(in window: UIWindow) -> UIScrollView? {
+        window.descendants(ofType: UIScrollView.self).first { $0.contentSize.width > 2 * $0.bounds.width && $0.bounds.width == window.bounds.width }
+    }
+
     /// On iOS 26.5 a new window's first touch can go nowhere, so a tap on the empty page below the
     /// grid takes it.
     static func show(on month: Date, look: ClubScreensTests.Look = looks[0]) async throws -> Screen {
@@ -182,7 +186,7 @@ struct CalendarMonthSwipeScreenTests {
         model.selectedDate = selected
         let shown = Shown()
         let window = try ClubScreensTests.show(Page(viewModel: model, shown: shown), look: look, height: 812)
-        let pager = { window.descendants(ofType: UIScrollView.self).first { $0.contentSize.width > 2 * $0.bounds.width } }
+        let pager = { Self.pager(in: window) }
         try await waitUntil { pager() != nil }
         let screen = Screen(window: window, model: model, pager: try #require(pager()), shown: shown)
         #expect(screen.pager.contentSize.width == CGFloat(CalendarViewModel.monthPageCount) * screen.pager.bounds.width)
@@ -202,11 +206,26 @@ struct CalendarMonthSwipeScreenTests {
             defer { window.isHidden = true }
             try await waitUntil { stack.isShown }
             stack.path.append(1)
-            let pager = { window.descendants(ofType: UIScrollView.self).first { $0.contentSize.width > 2 * $0.bounds.width } }
+            let pager = { Self.pager(in: window) }
             try await waitUntil { pager() != nil }
             let screen = Screen(window: window, model: model, pager: try #require(pager()), shown: shown)
             try await screen.settle(on: Self.december)
             #expect(shown.months.isEmpty, "the grid opens on its month without showing another first: \(shown.months)")
+        }
+    }
+
+    @Test("a change of width, as on an iPad's rotation, keeps the grid on its month")
+    func resized() async throws {
+        try await withAccessibilityAutomation {
+            let screen = try await Self.show(on: Self.december)
+            defer { screen.window.isHidden = true }
+            for width in [CGFloat(700), ClubScreensTests.width] {
+                UIView.animate(withDuration: 0.3) { screen.window.frame.size.width = width }
+                try await waitUntil { Self.pager(in: screen.window) != nil }
+                let resized = Screen(window: screen.window, model: screen.model, pager: try #require(Self.pager(in: screen.window)), shown: screen.shown)
+                try await resized.settle(on: Self.december)
+            }
+            #expect(screen.shown.months.isEmpty, "the grid keeps its month without showing another: \(screen.shown.months)")
         }
     }
 

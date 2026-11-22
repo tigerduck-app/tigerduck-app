@@ -40,9 +40,8 @@ struct Pager<Page: View>: View {
             // UIKit lays the scroll view out in whole pixels, and pages of any other width drift off
             // its paging.
             let width = (proxy.size.width * displayScale).rounded() / displayScale
-            // A page pushed onto a navigation stack is laid out at another width before it appears,
-            // and a lazy stack that measured pages at both widths misjudges its length and opens on a
-            // far page.
+            // A page pushed onto a navigation stack is laid out at other widths before it appears, and
+            // scroll views made for those widths report scrolls to far pages.
             if hasAppeared {
                 ScrollView(.horizontal) {
                     LazyHStack(spacing: 0) {
@@ -71,9 +70,13 @@ struct Pager<Page: View>: View {
                 .scrollIndicators(.hidden)
                 // A lazy stack scrolled to a far page on appear passes the first page on its way there.
                 .defaultScrollAnchor(UnitPoint(x: Double(position.settledPage) / Double(max(count - 1, 1)), y: 0), for: .initialOffset)
+                // A lazy stack that measured pages at another width misjudges its length and keeps its
+                // offset, landing on a far page, so each width gets a new scroll view on the settled page.
+                .id(width)
+                .transaction(value: width) { $0.animation = nil }
             }
         }
-        .onAppear { hasAppeared = true }
+        .onAppear { withTransaction(\.disablesAnimations, true) { hasAppeared = true } }
     }
 
     /// VoiceOver's three-finger swipe moves the pager without the pan gesture that
