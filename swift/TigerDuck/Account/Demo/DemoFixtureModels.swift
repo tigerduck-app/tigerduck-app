@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 extension DemoFixture.Course {
     func course(in language: DemoLanguage, semester: String, onMoodle: Bool) -> SDCourse {
@@ -33,6 +34,16 @@ extension DemoFixture.CalendarEntry {
         return SDCalendarEvent(
             eventId: id ?? "demo-calendar-\(index)", title: title, date: date,
             source: source.flatMap(EventSource.init(rawValue:)) ?? .school
+        )
+    }
+}
+
+extension DemoFixture.CourseChange {
+    func row(from today: Date) -> CourseChangesDTO.Row {
+        let day = ClassTableViewModel.nextDate(onWeekday: weekday, from: today)
+        return CourseChangesDTO.Row(
+            id: id, course_no: courseNo, kind: kind, periods: periods, class_days: [TaipeiTime.dayKey(for: day)],
+            room: room, start: start, end: end, note_zh: note?.text(in: .zh), note_en: note?.text(in: .en)
         )
     }
 }

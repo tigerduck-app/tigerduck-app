@@ -83,8 +83,8 @@ nonisolated struct CourseChanges: Equatable, Sendable {
     private static let lastDecoded = LastDecoded<CourseChanges>()
 }
 
-private nonisolated struct CourseChangesDTO: Decodable, Sendable {
-    struct Row: Decodable, Sendable {
+nonisolated struct CourseChangesDTO: Codable, Sendable {
+    struct Row: Codable, Sendable {
         let id: Int
         let course_no: String
         let kind: String
@@ -187,12 +187,21 @@ final class CourseChangeStore {
     }
 
     func endpointDidChange() {
+        replaceFeed(Data())
+        Task { await refresh() }
+    }
+
+    /// Takes `feed` in place of the stored copy, as the demo account's feed, which no server sends;
+    /// an empty one drops the copy. A refresh already under way then stores nothing, and the next
+    /// asks for the whole term.
+    func replaceFeed(_ feed: Data) {
         endpointGeneration += 1
         refreshTask?.cancel()
         refreshTask = nil
         Defaults[.courseChangesETag] = ""
-        Defaults[.courseChangesCache] = Data()
-        Task { await refresh() }
+        guard feed != Defaults[.courseChangesCache] else { return }
+        Defaults[.courseChangesCache] = feed
+        revision &+= 1
     }
 
     private func performRefresh() async -> Bool {

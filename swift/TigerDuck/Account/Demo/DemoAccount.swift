@@ -7,7 +7,7 @@ struct DemoAccount: AccountScoped {
     let fixture: DemoFixture?
     var stores = DemoStores()
     var language: () -> DemoLanguage = { .shown }
-    var now: () -> Date = { Date() }
+    var now: () -> Date = { AppClock.now() }
 
     static let app = DemoAccount(fixture: .bundled)
 
@@ -70,6 +70,7 @@ struct DemoAccount: AccountScoped {
 
     func leave() {
         Defaults.reset(stores.demoSignedIn)
+        stores.keepCourseChanges(Data())
         if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
         #if os(iOS)
         if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
@@ -92,6 +93,8 @@ struct DemoAccount: AccountScoped {
         let kept = context.assignments.loadCalendarEvents().filter { $0.source == .moodle }
         _ = context.assignments.saveCalendarEvents(kept + school, for: signIn)
         stores.keepBulletins((fixture.bulletins ?? []).enumerated().map { $1.detail(index: $0) }, signIn)
+        let changes = CourseChangesDTO(term: semester, changes: (fixture.courseChanges ?? []).map { $0.row(from: now()) })
+        stores.keepCourseChanges((try? JSONEncoder().encode(changes)) ?? Data())
         for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
     }
 
@@ -148,6 +151,7 @@ struct DemoStores {
     var keepBulletins: (_ bulletins: [BulletinAPI.BulletinDetail], _ signIn: SignIn) -> Void = {
         BulletinFeed.keep($0, for: $1)
     }
+    var keepCourseChanges: (_ feed: Data) -> Void = { CourseChangeStore.shared.replaceFeed($0) }
     var turnOffSync: (SignIn) -> Void = { CloudSyncPreference.turnOffForDemo($0) }
     var libraryIsKept: () -> Bool = { LibraryService.storedUsername != nil }
     var signInLibrary: (_ username: String, _ password: String) -> Void = {

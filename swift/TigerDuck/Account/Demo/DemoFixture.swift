@@ -12,13 +12,14 @@ nonisolated struct DemoFixture: Decodable, Sendable {
     let assignments: [Assignment]?
     let bulletins: [Bulletin]?
     let calendar: [CalendarEntry]?
+    let courseChanges: [CourseChange]?
     let moodle: DemoMoodle?
     let emptyClassroom: DemoClassrooms?
     let informationSystem: [PortalEntry]?
 
     enum CodingKeys: String, CodingKey {
         case studentId, libraryQr, courses, classmates, assignments, bulletins, calendar, moodle, emptyClassroom
-        case informationSystem
+        case informationSystem, courseChanges
         case schoolPassword = "school-password"
         case libraryPassword = "library-password"
     }
@@ -69,6 +70,20 @@ nonisolated struct DemoFixture: Decodable, Sendable {
         let title: String
         let date: String
         let source: String?
+    }
+
+    /// A change of the course feed's kinds on the coming `weekday`, 1 for Monday to 7 for Sunday,
+    /// counted from today as the class table's week is.
+    struct CourseChange: Decodable, Sendable {
+        let id: Int
+        let courseNo: String
+        let kind: String
+        let weekday: Int
+        let periods: [String]?
+        let room: String?
+        let start: String?
+        let end: String?
+        let note: DemoText?
     }
 
     /// `category` is the portal block's id, `service-1` to `service-6`.

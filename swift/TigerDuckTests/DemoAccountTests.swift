@@ -34,18 +34,19 @@ struct DemoAccountTests {
         func removeAllObjects() throws { try stored.removeAllObjects() }
     }
 
-    private static let studentId = "B11308964"
+    static let studentId = "B11308964"
     private static let schoolPassword = "its-my-duty"
     private static let libraryPassword = "its-my-duty"
 
-    private final class Calls {
+    final class Calls {
         var syncTurnedOff = 0
         var library: [String] = []
         var schoolSignIns = 0
+        var courseChanges: [Data] = []
     }
 
     @MainActor
-    private final class Folder {
+    final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DemoAccountTests-\(UUID().uuidString)", isDirectory: true)
         lazy var cache = TestCache(folders: CacheFolders(root: root))
@@ -61,20 +62,21 @@ struct DemoAccountTests {
         }
     }
 
-    private static func demoSignIn() -> SignIn {
+    static func demoSignIn() -> SignIn {
         let signIns = SignInSeries()
         signIns.startDemo()
         return signIns.currentSignIn
     }
 
-    private static func account(_ folder: Folder, statuses: ServerStatusTracker = ServerStatusTracker(),
-                                calls: Calls = Calls()) -> DemoAccount {
+    static func account(_ folder: Folder, statuses: ServerStatusTracker = ServerStatusTracker(),
+                                calls: Calls = Calls(), courseChanges: ((Data) -> Void)? = nil) -> DemoAccount {
         let cache = folder.cache
         let stores = DemoStores(
             courses: cache.courses, colors: CourseColorStore(files: cache.colors), rounds: AssignmentRounds(),
             classmates: folder.classmates, statuses: statuses, demoSignedIn: folder.demoSignedIn,
             moodle: { MoodleCacheContext(account: $0, cache: cache.moodle, assignments: cache.assignments, signIn: $1) },
             keepBulletins: { BulletinFeed.keep($0, files: cache.bulletins, for: $1) },
+            keepCourseChanges: courseChanges ?? { calls.courseChanges.append($0) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
             libraryIsKept: { false },
             signInLibrary: { username, _ in calls.library.append(username) }
@@ -88,7 +90,7 @@ struct DemoAccountTests {
         let raw = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(raw.keys) == [
             "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
-            "assignments", "bulletins", "calendar", "moodle", "emptyClassroom", "informationSystem",
+            "assignments", "bulletins", "calendar", "courseChanges", "moodle", "emptyClassroom", "informationSystem",
         ])
 
         let fixture = try #require(DemoFixture.load(from: .main))

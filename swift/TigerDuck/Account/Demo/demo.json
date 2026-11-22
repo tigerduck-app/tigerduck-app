@@ -288,6 +288,13 @@
     { "title": "期中考週", "date": "2026-11-09", "source": "exam" }
   ],
 
+  "courseChanges": [
+    { "id": 1, "courseNo": "CS3005301", "kind": "assessment", "weekday": 3, "periods": ["6", "7"], "note": { "zh": "期中考", "en": "Midterm exam" } },
+    { "id": 2, "courseNo": "CS3005301", "kind": "room", "weekday": 3, "periods": ["6", "7"], "room": "TR-313" },
+    { "id": 3, "courseNo": "CS3204301", "kind": "online", "weekday": 4, "periods": ["3", "4"] },
+    { "id": 4, "courseNo": "EE2004301", "kind": "note", "weekday": 4, "periods": ["8"], "note": { "zh": "補課", "en": "Make-up class" } }
+  ],
+
   "moodle": {
     "ownMemberId": 9001,
     "courses": [
