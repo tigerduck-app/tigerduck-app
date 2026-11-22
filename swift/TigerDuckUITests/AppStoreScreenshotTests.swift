@@ -92,8 +92,6 @@ final class AppStoreScreenshotTests: XCTestCase {
     @MainActor
     func test08Calendar() throws {
         openFeature("feature_calendar")
-        // Opened from More, the month pager can show a month far from today until Today is tapped.
-        tapButton("calendar_today")
         capture("08-calendar")
     }
 
