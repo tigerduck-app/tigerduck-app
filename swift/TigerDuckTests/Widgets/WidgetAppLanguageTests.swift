@@ -39,7 +39,7 @@ struct WidgetAppLanguageTests {
         )
         let view = LockScreenView(snapshot: snapshot, language: language)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .background(Color(red: 0x4E / 255, green: 0xCD / 255, blue: 0xC4 / 255).opacity(0.12))
+            .background(Color(red: 0.306, green: 0.804, blue: 0.769).opacity(0.12))
         return try Host.show(view, size: CGSize(width: 364, height: 136), background: Color(white: 0.96), margins: 0)
     }
 

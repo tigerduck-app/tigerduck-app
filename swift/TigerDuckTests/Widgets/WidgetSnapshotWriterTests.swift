@@ -41,8 +41,7 @@ struct WidgetSnapshotWriterTests {
         var appLanguage = LanguageManager.system
     }
 
-    /// The snapshot stays the same throughout, as after an update from a release that wrote no tag.
-    @Test func theLanguageChosenInTheAppReachesTheWidgetsAndReloadsThem() throws {
+    @Test func aNewLanguageAloneIsWrittenForTheWidgetsAndReloadsThem() throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }
         let store = WidgetSnapshotStore(appGroupIdentifier: suite)
