@@ -1,8 +1,10 @@
 import SwiftUI
 import Defaults
 
-func effectiveLiveActivityEnabled(isLiveActivityEnabled: Bool, cloudSyncEnabled: Bool) -> Bool {
-    isLiveActivityEnabled && cloudSyncEnabled
+/// The demo account's sync is off because no server knows it, so its activities are only the ones
+/// this device starts.
+func effectiveLiveActivityEnabled(isLiveActivityEnabled: Bool, cloudSyncEnabled: Bool, isDemo: Bool = false) -> Bool {
+    isLiveActivityEnabled && (cloudSyncEnabled || isDemo)
 }
 
 @Observable

@@ -27,6 +27,8 @@ and `LiveActivityCoordinator` keeps or ends whatever ActivityKit is running.
   shape as Android's `effectiveCloudSyncEnabled`.
 - It reads both inputs and writes neither: suppressing Live Activity while sync is off never
   persists `isLiveActivityEnabled = false`, so turning sync back on restores the user's choice.
+- The demo account counts as synced (`isDemo:`): its sync is off because no server knows it, so
+  the app starts its activities from the resolved scenario and uploads no schedule.
 
 ## Alternatives
 
@@ -38,7 +40,8 @@ and `LiveActivityCoordinator` keeps or ends whatever ActivityKit is running.
 
 - New code that starts, keeps or schedules a Live Activity asks `effectiveLiveActivityEnabled`,
   directly or through `LiveActivityRefresher.isAvailable`.
-- Settings disables the Live Activity row while course sync is off.
+- Settings disables the Live Activity row while course sync is off, the demo account's too, which
+  keeps the switch's default.
 - `LiveActivitySyncGateTests` pins the function and the resolver, `ScheduleSyncServiceTests` the
   schedule upload, and `LiveActivityCoordinatorTests` the end rule while Live Activity is
   unavailable.
