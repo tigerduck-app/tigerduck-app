@@ -702,7 +702,7 @@ jobs:
             expected=$((expected + $(grep -cE '^[[:space:]]*@Test' "swift/TigerDuckTests/$suite.swift")))
             only+=("-only-testing:TigerDuckTests/$suite")
           done
-          for test in "CalendarMonthSwipeScreenTests/arrows()" "CalendarMonthSwipeScreenTests/turnDuringTheWait()" "CalendarMonthSwipeScreenTests/voiceOver()"; do
+          for test in "CalendarMonthSwipeScreenTests/arrows()" "CalendarMonthSwipeScreenTests/pushed()" "CalendarMonthSwipeScreenTests/turnDuringTheWait()" "CalendarMonthSwipeScreenTests/voiceOver()"; do
             expected=$((expected + 1))
             only+=("-only-testing:TigerDuckTests/$test")
           done

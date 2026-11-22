@@ -87,6 +87,26 @@ struct CalendarMonthSwipeScreenTests {
         }
     }
 
+    @Observable
+    final class Stack {
+        var path: [Int] = []
+        var isShown = false
+    }
+
+    /// The calendar as More pushes it.
+    struct Pushed: View {
+        @Bindable var stack: Stack
+        let page: Page
+
+        var body: some View {
+            NavigationStack(path: $stack.path) {
+                Color.backgroundPrimary
+                    .onAppear { stack.isShown = true }
+                    .navigationDestination(for: Int.self) { _ in MoreFeatureDestination { page } }
+            }
+        }
+    }
+
     @MainActor struct Screen {
         let window: UIWindow
         let model: CalendarViewModel
@@ -170,6 +190,24 @@ struct CalendarMonthSwipeScreenTests {
         #expect(shown.months.isEmpty, "the grid opens on its month without showing another first: \(shown.months)")
         try await fingerTap(at: CGPoint(x: window.bounds.midX, y: window.bounds.maxY - 20), in: window)
         return screen
+    }
+
+    @Test("pushed as More pushes it, the grid opens on today's month")
+    func pushed() async throws {
+        try await withAccessibilityAutomation {
+            let model = CalendarViewModel(now: { Self.december })
+            let shown = Shown()
+            let stack = Stack()
+            let window = try ClubScreensTests.show(Pushed(stack: stack, page: Page(viewModel: model, shown: shown)), look: Self.looks[0])
+            defer { window.isHidden = true }
+            try await waitUntil { stack.isShown }
+            stack.path.append(1)
+            let pager = { window.descendants(ofType: UIScrollView.self).first { $0.contentSize.width > 2 * $0.bounds.width } }
+            try await waitUntil { pager() != nil }
+            let screen = Screen(window: window, model: model, pager: try #require(pager()), shown: shown)
+            try await screen.settle(on: Self.december)
+            #expect(shown.months.isEmpty, "the grid opens on its month without showing another first: \(shown.months)")
+        }
     }
 
     @Test("the grid follows a swipe each way and a short drag snaps back, its height that of the taller month",

@@ -27,6 +27,7 @@ struct Pager<Page: View>: View {
     @ViewBuilder let page: (Int) -> Page
 
     @Environment(\.displayScale) private var displayScale
+    @State private var hasAppeared = false
 
     private struct Spot: Equatable {
         let step: Int
@@ -39,34 +40,40 @@ struct Pager<Page: View>: View {
             // UIKit lays the scroll view out in whole pixels, and pages of any other width drift off
             // its paging.
             let width = (proxy.size.width * displayScale).rounded() / displayScale
-            ScrollView(.horizontal) {
-                LazyHStack(spacing: 0) {
-                    ForEach(0..<count, id: \.self) { step in
-                        Group {
-                            if abs(step - index) <= 1 || step == position.settledPage {
-                                page(step)
-                            } else {
-                                Color.clear
+            // A page pushed onto a navigation stack is laid out at another width before it appears,
+            // and a lazy stack that measured pages at both widths misjudges its length and opens on a
+            // far page.
+            if hasAppeared {
+                ScrollView(.horizontal) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(0..<count, id: \.self) { step in
+                            Group {
+                                if abs(step - index) <= 1 || step == position.settledPage {
+                                    page(step)
+                                } else {
+                                    Color.clear
+                                }
                             }
+                            .frame(width: width, height: proxy.size.height)
+                            .accessibilityHidden(step != index)
                         }
-                        .frame(width: width, height: proxy.size.height)
-                        .accessibilityHidden(step != index)
                     }
+                    .scrollTargetLayout()
+                    .background(ForwardPagingLock(isLocked: lockedPages.contains(position.settledPage)))
                 }
-                .scrollTargetLayout()
-                .background(ForwardPagingLock(isLocked: lockedPages.contains(position.settledPage)))
+                .scrollTargetBehavior(.paging)
+                .scrollPosition($position.scroll)
+                // The scroll position's view identity follows only a drag, not VoiceOver's
+                // three-finger swipe; the visible rect follows every scroll.
+                .onScrollGeometryChange(for: Spot.self, of: Self.spot(in:)) { _, spot in
+                    follow(spot)
+                }
+                .scrollIndicators(.hidden)
+                // A lazy stack scrolled to a far page on appear passes the first page on its way there.
+                .defaultScrollAnchor(UnitPoint(x: Double(position.settledPage) / Double(max(count - 1, 1)), y: 0), for: .initialOffset)
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition($position.scroll)
-            // The scroll position's view identity follows only a drag, not VoiceOver's
-            // three-finger swipe; the visible rect follows every scroll.
-            .onScrollGeometryChange(for: Spot.self, of: Self.spot(in:)) { _, spot in
-                follow(spot)
-            }
-            .scrollIndicators(.hidden)
-            // A lazy stack scrolled to a far page on appear passes the first page on its way there.
-            .defaultScrollAnchor(UnitPoint(x: Double(position.settledPage) / Double(max(count - 1, 1)), y: 0), for: .initialOffset)
         }
+        .onAppear { hasAppeared = true }
     }
 
     /// VoiceOver's three-finger swipe moves the pager without the pan gesture that
