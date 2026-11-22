@@ -79,6 +79,122 @@ struct DemoFeatureDataTests {
         #expect(shown.groupedCourses.map(\.term) == Array(earlier.reversed()))
     }
 
+    @Test("from a Tuesday, Wednesday's club activity is this week's and Monday's is next week's")
+    func clubsFillTheComingWeek() throws {
+        let calls = DemoAccountTests.Calls()
+        var account = DemoAccountTests.account(DemoAccountTests.Folder(), calls: calls)
+        let tuesday = try Self.day("2026-11-24T09:00")
+        account.now = { tuesday }
+        let fixture = try #require(account.fixture)
+        let subscribed = (fixture.clubs ?? []).filter { $0.subscribed == true }.map(\.id)
+
+        account.write(fixture, for: DemoAccountTests.demoSignIn())
+        let names = Dictionary(uniqueKeysWithValues: calls.clubs.map { ($0.id, $0.displayName(chinese: false)) })
+        let shown = ClubActivities.occurrences(
+            of: calls.clubActivities, on: ["2026-11-24", "2026-11-25", "2026-11-30"],
+            clubs: subscribed.map { (id: $0, color: UInt32(0)) }, names: names
+        )
+
+        #expect(calls.clubs.map(\.name) == ["開源技術開發研究社", "資訊安全研究社"])
+        #expect(shown.map(\.day) == ["2026-11-25", "2026-11-30"])
+        #expect(shown.map(\.clubName) == ["Open Source Development Club", "Information Security Club"])
+        #expect(calls.clubActivities.map(\.location) == ["TR-214", "TR-211"])
+    }
+
+    @Test("the demo's clubs stay through a refresh, which sends nothing, and leaving the demo shows the stored ones")
+    func clubsNeedNoRequest() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(
+            baseURL: base, session: URLSession(configuration: configuration.refusingDemoRequests(with: DemoSeriesRefusal.self))
+        )
+        let root = FileManager.default.temporaryDirectory.appending(path: "DemoClubs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = ClubFiles(folders: CacheFolders(root: root))
+        let directory = ClubDirectory(files: files, client: client, chinese: { false })
+        let feed = ClubActivities(files: files, client: client, subscriptions: ClubSubscriptions(), directory: directory)
+        DemoSeriesRefusal.series.startDemo()
+        defer { DemoSeriesRefusal.series.end() }
+        let calls = DemoAccountTests.Calls()
+        var account = DemoAccountTests.account(DemoAccountTests.Folder(), calls: calls)
+        account.stores.showClubs = { clubs, activities in
+            directory.show(clubs)
+            feed.show(activities)
+        }
+        account.stores.showStoredClubs = {
+            directory.showStored()
+            feed.showStored()
+        }
+
+        account.write(try #require(account.fixture), for: DemoSeriesRefusal.series.currentSignIn)
+        await directory.refresh()
+        await feed.refresh()
+
+        #expect(directory.clubs.count == 2)
+        #expect(directory.failure == nil)
+        #expect(feed.activities.count == 2)
+        #expect(SettingsAPIStub.requests(under: base).isEmpty)
+
+        SecureStore.$sharedForTesting.withValue(MemoryKeychain.locked()) { account.leave() }
+        #expect(directory.clubs.isEmpty)
+        #expect(feed.activities.isEmpty)
+    }
+
+    @Test("a club fetch of the account before, answered after the demo shows its clubs, keeps nothing")
+    func aClubFetchUnderWayKeepsNothing() async throws {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(baseURL: base, session: URLSession(configuration: configuration))
+        let root = FileManager.default.temporaryDirectory.appending(path: "DemoClubs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let files = ClubFiles(folders: CacheFolders(root: root))
+        let directory = ClubDirectory(files: files, client: client, chinese: { false })
+        let feed = ClubActivities(files: files, client: client, subscriptions: ClubSubscriptions(), directory: directory)
+        let envelope = { (rows: [[String: Any]]) in
+            try JSONSerialization.data(withJSONObject: ["success": true, "data": rows, "error": NSNull(), "meta": NSNull()])
+        }
+        let day = TaipeiTime.dayKey(for: AppClock.now())
+        let answered = SettingsAPIStub.ReplyGate()
+        SettingsAPIStub.enqueue(
+            .init(statusCode: 200, body: try envelope([["id": 1, "name": "籃球社", "en_name": "Basketball Club"]]), gate: answered),
+            for: base.appending(path: "clubs")
+        )
+        SettingsAPIStub.enqueue(
+            .init(
+                statusCode: 200,
+                body: try envelope([[
+                    "id": 7, "name": "練球", "club_id": 1, "club_name": "籃球社", "date": day, "end_date": day,
+                    "start_time": "18:00:00", "end_time": "20:00:00", "location": "", "type": "活動", "content": "",
+                ]]),
+                gate: answered
+            ),
+            for: base.appending(path: "activities")
+        )
+        var account = DemoAccountTests.account(DemoAccountTests.Folder())
+        account.stores.showClubs = { clubs, activities in
+            directory.show(clubs)
+            feed.show(activities)
+        }
+
+        let fetches = Task {
+            async let clubs: Void = directory.refresh()
+            await feed.refresh()
+            await clubs
+        }
+        try await waitUntil { SettingsAPIStub.requests(under: base).count == 2 }
+        account.write(try #require(account.fixture), for: DemoAccountTests.demoSignIn())
+        answered.open()
+        answered.open()
+        await fetches.value
+
+        #expect(Set(directory.clubs.map(\.id)) == [990001, 990002])
+        #expect(directory.failure == nil)
+        #expect(feed.activities.map(\.id) == [991001, 991002])
+        #expect(files.loadActivities() == nil)
+    }
+
     @Test("the demo's course changes stay through a refresh, which sends nothing, and leaving the demo drops them")
     func courseChangesNeedNoRequest() async throws {
         try await withExclusiveRealDefaults {

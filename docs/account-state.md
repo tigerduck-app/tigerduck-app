@@ -28,6 +28,7 @@ public school data. Every `AccountScoped` type must be in one account's list in 
 | Delivered notifications of the account | `AuthService.logout()` and again at the end of the sign-out calls; School Mail's thread stays |
 | Answers shared between callers (Moodle enrolment, classroom usage, enrolled course numbers) | `AuthService.endSchoolSession(departing:)` |
 | Imported class tables of the account (`imported_class_tables.json`) | `ImportedClassTableStore.forgetAccount(in:)` deletes the file by name, and `removeAll()` empties the store in memory, both in `SignOutPlan.school(_:)` |
+| The demo account's course changes, written over the public feed in `courseChangesCache`, and its clubs, shown in `ClubDirectory` and `ClubActivities` in memory only | `DemoAccount.leave()`, which empties the feed and its ETag and shows the stored clubs again |
 | Moodle file downloads in flight | `MoodleFileDownloads.cancelAll()`, in the first step of `SignOutPlan.school(_:)` |
 | `AppEnvironment`'s conflicts, pending overrides, refreshes and polling | `SignOutPlan.school(_:)` |
 | Courses deleted in the last two minutes, which a full sync keeps hidden | `LocalEdits.recentCourseDeletions` holds them for one sign-in of the school `AccountSession` (`SignInBound`) |

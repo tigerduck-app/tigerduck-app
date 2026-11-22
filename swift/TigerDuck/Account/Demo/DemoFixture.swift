@@ -14,13 +14,14 @@ nonisolated struct DemoFixture: Decodable, Sendable {
     let calendar: [CalendarEntry]?
     let courseChanges: [CourseChange]?
     let scores: Scores?
+    let clubs: [Club]?
     let moodle: DemoMoodle?
     let emptyClassroom: DemoClassrooms?
     let informationSystem: [PortalEntry]?
 
     enum CodingKeys: String, CodingKey {
         case studentId, libraryQr, courses, classmates, assignments, bulletins, calendar, moodle, emptyClassroom
-        case informationSystem, courseChanges, scores
+        case informationSystem, courseChanges, scores, clubs
         case schoolPassword = "school-password"
         case libraryPassword = "library-password"
     }
@@ -113,6 +114,28 @@ nonisolated struct DemoFixture: Decodable, Sendable {
 
         let student: DemoText?
         let terms: [Term]?
+    }
+
+    /// A club of the club directory. Its activities fall on the coming `weekday`, as the course
+    /// changes do, and `type` is the activity feed's.
+    struct Club: Decodable, Sendable {
+        struct Activity: Decodable, Sendable {
+            let id: Int
+            let name: DemoText
+            let weekday: Int
+            let start: String
+            let end: String
+            let location: DemoText?
+            let type: ClubActivityKind?
+            let content: DemoText?
+        }
+
+        let id: Int
+        let name: DemoText
+        let attribute: String?
+        let tagline: DemoText?
+        let subscribed: Bool?
+        let activities: [Activity]?
     }
 
     /// `category` is the portal block's id, `service-1` to `service-6`.

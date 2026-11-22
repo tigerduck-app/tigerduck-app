@@ -43,6 +43,10 @@ struct DemoAccountTests {
         var library: [String] = []
         var schoolSignIns = 0
         var courseChanges: [Data] = []
+        var clubs: [ClubCard] = []
+        var clubActivities: [ClubActivity] = []
+        var subscribedClubs: [Int] = []
+        var storedClubsShown = 0
     }
 
     @MainActor
@@ -78,6 +82,12 @@ struct DemoAccountTests {
             keepBulletins: { BulletinFeed.keep($0, files: cache.bulletins, for: $1) },
             keepCourseChanges: courseChanges ?? { calls.courseChanges.append($0) },
             keepScores: { ScoreReportFiles(folders: cache.folders).saveScoreReport($0, studentId: $1) },
+            showClubs: { clubs, activities in
+                calls.clubs = clubs
+                calls.clubActivities = activities
+            },
+            showStoredClubs: { calls.storedClubsShown += 1 },
+            subscribeClub: { id, _ in calls.subscribedClubs.append(id) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
             libraryIsKept: { false },
             signInLibrary: { username, _ in calls.library.append(username) }
@@ -91,7 +101,7 @@ struct DemoAccountTests {
         let raw = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(raw.keys) == [
             "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
-            "assignments", "bulletins", "calendar", "courseChanges", "scores", "moodle", "emptyClassroom",
+            "assignments", "bulletins", "calendar", "courseChanges", "scores", "clubs", "moodle", "emptyClassroom",
             "informationSystem",
         ])
 
@@ -226,6 +236,8 @@ struct DemoAccountTests {
         #expect(bulletins.allSatisfy { cache.bulletins.loadBulletinDetail(id: $0.id)?.bodyMd?.isEmpty == false })
 
         #expect(folder.classmates.people.map(\.nickname) == ["Duckling"])
+        #expect(calls.subscribedClubs == [990001, 990002])
+        #expect(calls.clubs.count == 2)
         #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .ok })
         #expect(calls.library == [Self.studentId])
         #expect(calls.syncTurnedOff == 1)
@@ -259,7 +271,7 @@ struct DemoAccountTests {
         #expect(ScoreReportFiles(folders: folder.cache.folders).loadScoreReport(studentId: Self.studentId) == nil)
     }
 
-    @Test("a launch behind the lock screen resumes the demo sign-in, and a classmate removed stays removed")
+    @Test("a launch behind the lock screen resumes the demo sign-in and its clubs, and a classmate removed stays removed")
     func aLockedLaunchResumesTheDemo() async throws {
         let folder = Folder()
         let calls = Calls()
@@ -287,8 +299,10 @@ struct DemoAccountTests {
         }
         let classmate = try #require(folder.classmates.people.first)
         folder.classmates.delete(classmate.id, for: auth.session.signIns.currentSignIn)
+        calls.clubs = []
         keychain.isLocked = true
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: locked) }
+        #expect(calls.clubs.count == 2)
         keychain.isLocked = false
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: unlocked) }
 

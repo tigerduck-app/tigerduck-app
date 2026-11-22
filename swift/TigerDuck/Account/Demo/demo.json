@@ -353,6 +353,27 @@
     ]
   },
 
+  "clubs": [
+    {
+      "id": 990001,
+      "name": { "zh": "開源技術開發研究社", "en": "Open Source Development Club" },
+      "attribute": "學藝性",
+      "subscribed": true,
+      "activities": [
+        { "id": 991001, "name": { "zh": "期初社員大會", "en": "Start-of-term general meeting" }, "weekday": 3, "start": "19:00", "end": "21:00", "location": "TR-214", "type": "社課或會議" }
+      ]
+    },
+    {
+      "id": 990002,
+      "name": { "zh": "資訊安全研究社", "en": "Information Security Club" },
+      "attribute": "學藝性",
+      "subscribed": true,
+      "activities": [
+        { "id": 991002, "name": { "zh": "Kali Linux 101 — 從 pwd 到 root", "en": "Kali Linux 101 — from pwd to root" }, "weekday": 1, "start": "19:00", "end": "21:00", "location": "TR-211", "type": "社課或會議" }
+      ]
+    }
+  ],
+
   "moodle": {
     "ownMemberId": 9001,
     "courses": [

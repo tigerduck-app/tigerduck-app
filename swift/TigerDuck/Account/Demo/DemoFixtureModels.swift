@@ -79,6 +79,28 @@ extension DemoFixture.Scores {
     }
 }
 
+extension DemoFixture.Club {
+    func card(in language: DemoLanguage) -> ClubCard {
+        ClubCard(
+            id: id, name: name.text(in: .zh), enName: name.text(in: .en), attribute: attribute,
+            tagline: tagline?.text(in: language)
+        )
+    }
+
+    /// `start` and `end` are `HH:mm`, and the feed's times `HH:mm:ss`.
+    func activities(in language: DemoLanguage, from today: Date) -> [ClubActivity] {
+        (activities ?? []).map { activity in
+            let day = TaipeiTime.dayKey(for: ClassTableViewModel.nextDate(onWeekday: activity.weekday, from: today))
+            return ClubActivity(
+                id: activity.id, name: activity.name.text(in: language), clubID: id, clubName: name.text(in: .zh),
+                date: day, endDate: day, startTime: activity.start + ":00", endTime: activity.end + ":00",
+                location: activity.location?.text(in: language) ?? "", kind: activity.type ?? .meeting,
+                content: activity.content?.text(in: language) ?? ""
+            )
+        }
+    }
+}
+
 private extension DemoFixture.Scores.Rank {
     var stats: RankingStats { RankingStats(classRank: classRank, deptRank: deptRank, gpa: gpa) }
 }

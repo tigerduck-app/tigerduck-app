@@ -28,6 +28,7 @@ struct DemoAccount: AccountScoped {
         NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
         write(fixture, for: signIn)
         importClassmates(of: fixture, for: signIn)
+        for club in fixture.clubs ?? [] where club.subscribed == true { stores.subscribeClub(club.id, signIn) }
         if fixture.libraryQr?.fakeLoggedIn == true, !stores.libraryIsKept() {
             stores.signInLibrary(fixture.normalizedStudentId, fixture.libraryPassword)
         }
@@ -42,7 +43,10 @@ struct DemoAccount: AccountScoped {
         guard let fixture else { return }
         let current = session.signIns.currentSignIn
         guard let kept = storedAccountIsDemoIfReadable() else {
-            if Defaults[stores.demoSignedIn], !current.isDemo { startSignIn(in: session) }
+            if Defaults[stores.demoSignedIn], !current.isDemo {
+                startSignIn(in: session)
+                showClubs(of: fixture)
+            }
             return
         }
         if kept, !current.isDemo {
@@ -71,6 +75,7 @@ struct DemoAccount: AccountScoped {
     func leave() {
         Defaults.reset(stores.demoSignedIn)
         stores.keepCourseChanges(Data())
+        stores.showStoredClubs()
         if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
         #if os(iOS)
         if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
@@ -99,7 +104,16 @@ struct DemoAccount: AccountScoped {
         if let scores = fixture.scores?.report(in: language, currentTerm: semester, enrolledCredits: enrolled) {
             stores.keepScores(scores, fixture.normalizedStudentId)
         }
+        showClubs(of: fixture)
         for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
+    }
+
+    /// The clubs live in memory only, so a launch behind the lock screen, which writes nothing else,
+    /// shows them again.
+    private func showClubs(of fixture: DemoFixture) {
+        let language = language()
+        let clubs = fixture.clubs ?? []
+        stores.showClubs(clubs.map { $0.card(in: language) }, clubs.flatMap { $0.activities(in: language, from: now()) })
     }
 
     private func writeCourses(
@@ -157,6 +171,15 @@ struct DemoStores {
     }
     var keepCourseChanges: (_ feed: Data) -> Void = { CourseChangeStore.shared.replaceFeed($0) }
     var keepScores: (_ report: ScoreReport, _ studentId: String) -> Void = { NTUSTScoreService.keep($0, studentId: $1) }
+    var showClubs: (_ clubs: [ClubCard], _ activities: [ClubActivity]) -> Void = {
+        ClubDirectory.shared.show($0)
+        ClubActivities.shared.show($1)
+    }
+    var showStoredClubs: () -> Void = {
+        ClubDirectory.shared.showStored()
+        ClubActivities.shared.showStored()
+    }
+    var subscribeClub: (_ id: Int, _ signIn: SignIn) -> Void = { ClubSubscriptions.shared.subscribe($0, for: $1) }
     var turnOffSync: (SignIn) -> Void = { CloudSyncPreference.turnOffForDemo($0) }
     var libraryIsKept: () -> Bool = { LibraryService.storedUsername != nil }
     var signInLibrary: (_ username: String, _ password: String) -> Void = {
