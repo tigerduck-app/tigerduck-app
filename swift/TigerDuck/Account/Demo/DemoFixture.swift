@@ -152,10 +152,11 @@ nonisolated struct DemoFixture: Decodable, Sendable {
         return bundled.matchesLibrary(username: username, password: password)
     }
 
-    static func load(from bundle: Bundle) -> DemoFixture? {
+    /// Its dates are moved so that `anchor` falls on `today`, as `DemoTime.shifted` does.
+    static func load(from bundle: Bundle, today: Date = AppClock.now()) -> DemoFixture? {
         guard let url = bundle.url(forResource: "demo", withExtension: "json") else { return nil }
         do {
-            return try JSONDecoder().decode(DemoFixture.self, from: Data(contentsOf: url))
+            return try JSONDecoder().decode(DemoFixture.self, from: DemoTime.shifted(Data(contentsOf: url), to: today))
         } catch {
             AppLogger.captureError(error, context: ["flow": "demoFixture"])
             return nil
@@ -211,6 +212,42 @@ nonisolated struct DemoText: Decodable, Sendable {
 
 nonisolated enum DemoTime {
     private static let localFormats = ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"]
+
+    /// `json` with every string that starts with a `yyyy-MM-dd` day moved by whole days, so that its
+    /// top-level `anchor` day falls on `today`'s day in Taipei. Weekdays are not kept: what is bound
+    /// to one, as course changes and clubs, carries a weekday instead of a date.
+    static func shifted(_ json: Data, to today: Date) -> Data {
+        guard let root = try? JSONSerialization.jsonObject(with: json) as? [String: Any],
+              let anchor = (root["anchor"] as? String).flatMap(day(of:)),
+              let todayDay = day(of: TaipeiTime.dayKey(for: today)),
+              let days = dayMath.dateComponents([.day], from: anchor, to: todayDay).day, days != 0,
+              let moved = try? JSONSerialization.data(withJSONObject: shifted(root, by: days)) else { return json }
+        return moved
+    }
+
+    /// Days are counted on a UTC calendar of their own: a `yyyy-MM-dd` names a day, not an instant.
+    private static let dayMath: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .gmt
+        return calendar
+    }()
+
+    private static func day(of text: String) -> Date? {
+        guard text.wholeMatch(of: /\d{4}-\d{2}-\d{2}/) != nil else { return nil }
+        return try? Date(text + "T00:00:00Z", strategy: .iso8601)
+    }
+
+    private static func shifted(_ value: Any, by days: Int) -> Any {
+        switch value {
+        case let text as String:
+            guard let day = day(of: String(text.prefix(10))),
+                  let moved = dayMath.date(byAdding: .day, value: days, to: day) else { return text }
+            return String(moved.formatted(.iso8601.year().month().day()).prefix(10)) + text.dropFirst(10)
+        case let list as [Any]: return list.map { shifted($0, by: days) }
+        case let object as [String: Any]: return object.mapValues { shifted($0, by: days) }
+        default: return value
+        }
+    }
 
     static func date(_ text: String?) -> Date? {
         guard let text = text?.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: " ", with: "T"),

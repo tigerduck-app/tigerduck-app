@@ -1,4 +1,5 @@
 {
+  "anchor": "2026-10-15",
   "studentId": "B11308964",
   "school-password": "its-my-duty",
   "library-password": "its-my-duty",
@@ -19,11 +20,11 @@
           "zh": "115 學年度第 1 學期期中考試時間公告",
           "en": "Midterm exam schedule, fall 2026"
         },
-        "date": "2026-09-14T09:00:00+08:00",
+        "date": "2026-10-12T09:00:00+08:00",
         "seen": false,
         "html": {
-          "zh": "<div style=\"font-family:sans-serif\"><img src=\"https://www.ntust.edu.tw/var/file/0/1000/img/logo.png\" alt=\"NTUST\"><h2 style=\"color:#1a4f8b\">期中考試時間</h2><p>各位同學好：</p><p>本學期期中考試週為 <b>11 月 2 日至 11 月 6 日</b>，請留意各課程公告。</p><table style=\"border-collapse:collapse\"><tr><td style=\"border:1px solid #ccc;padding:4px\">11/2–11/6</td><td style=\"border:1px solid #ccc;padding:4px\">期中考試週</td></tr></table><p>教務處 敬啟</p></div>",
-          "en": "<div style=\"font-family:sans-serif\"><img src=\"https://www.ntust.edu.tw/var/file/0/1000/img/logo.png\" alt=\"NTUST\"><h2 style=\"color:#1a4f8b\">Midterm exams</h2><p>Dear students,</p><p>Midterm week runs <b>November 2–6</b>. Please check each course's announcements.</p><table style=\"border-collapse:collapse\"><tr><td style=\"border:1px solid #ccc;padding:4px\">11/2–11/6</td><td style=\"border:1px solid #ccc;padding:4px\">Midterm week</td></tr></table><p>Office of Academic Affairs</p></div>"
+          "zh": "<div style=\"font-family:sans-serif\"><img src=\"https://www.ntust.edu.tw/var/file/0/1000/img/logo.png\" alt=\"NTUST\"><h2 style=\"color:#1a4f8b\">期中考試時間</h2><p>各位同學好：</p><p>本學期期中考試週將至，<b>各科考試時間</b>請留意各課程公告。</p><table style=\"border-collapse:collapse\"><tr><td style=\"border:1px solid #ccc;padding:4px\">期中考試週</td><td style=\"border:1px solid #ccc;padding:4px\">詳見學校行事曆</td></tr></table><p>教務處 敬啟</p></div>",
+          "en": "<div style=\"font-family:sans-serif\"><img src=\"https://www.ntust.edu.tw/var/file/0/1000/img/logo.png\" alt=\"NTUST\"><h2 style=\"color:#1a4f8b\">Midterm exams</h2><p>Dear students,</p><p>Midterm week is coming up. Please check each course's announcements for <b>its exam time</b>.</p><table style=\"border-collapse:collapse\"><tr><td style=\"border:1px solid #ccc;padding:4px\">Midterm week</td><td style=\"border:1px solid #ccc;padding:4px\">See the academic calendar</td></tr></table><p>Office of Academic Affairs</p></div>"
         }
       },
       {
@@ -35,7 +36,7 @@
           "zh": "圖書館國慶日開放時間異動",
           "en": "Library hours over the National Day holiday"
         },
-        "date": "2026-09-15T14:30:00+08:00",
+        "date": "2026-10-13T14:30:00+08:00",
         "seen": true,
         "plain": {
           "zh": "各位讀者好：\n\n國慶日連假期間開放時間異動，詳見附件或 https://www.lib.ntust.edu.tw。如有疑問請來信 library@mail.ntust.edu.tw。\n\n圖書館",
@@ -62,7 +63,7 @@
           "zh": "你的課程本週開始",
           "en": "Your course starts this week"
         },
-        "date": "2026-09-15T20:10:00+08:00",
+        "date": "2026-10-13T20:10:00+08:00",
         "seen": false,
         "plain": {
           "zh": "你好，\n\n你報名的課程將於本週開始，祝學習愉快！",
@@ -78,7 +79,7 @@
           "zh": "【重要】信箱容量已滿，請立即驗證帳號",
           "en": "[Important] Mailbox full — verify your account now"
         },
-        "date": "2026-09-16T08:05:00+08:00",
+        "date": "2026-10-14T08:05:00+08:00",
         "seen": false,
         "html": {
           "zh": "<p>您的信箱容量已滿，24 小時內未完成驗證將停用帳號。</p><p>請點選 <a href=\"https://ntust-mail-verify.com/login\">https://mail.ntust.edu.tw</a> 重新登入並輸入密碼。</p>",
@@ -101,7 +102,7 @@
           "zh": "詢問轉系申請截止日期",
           "en": "Question about the transfer application deadline"
         },
-        "date": "2026-09-16T21:40:00+08:00",
+        "date": "2026-10-14T21:40:00+08:00",
         "seen": true,
         "plain": {
           "zh": "您好，\n\n想請問轉系申請的截止日期是什麼時候呢？謝謝。",
@@ -124,7 +125,7 @@
           "zh": "Re: 115 學年度第 1 學期期中考試時間公告",
           "en": "Re: Midterm exam schedule, fall 2026"
         },
-        "date": "2026-09-14T10:15:00+08:00",
+        "date": "2026-10-12T10:15:00+08:00",
         "seen": true,
         "plain": {
           "zh": "收到，謝謝提醒！",
@@ -252,7 +253,7 @@
       "courseNo": "CS3204301",
       "courseName": "Operating Systems",
       "title": "Lab 2: Process Scheduling",
-      "due": "2026-09-18T18:00",
+      "due": "2026-10-20T18:00",
       "completed": false
     },
     {
@@ -260,7 +261,7 @@
       "courseNo": "EE2004301",
       "courseName": "Linear Algebra",
       "title": "Exercises 4.1 – 4.3",
-      "due": "2026-09-12T23:59",
+      "due": "2026-10-10T23:59",
       "completed": true
     }
   ],
@@ -269,23 +270,23 @@
     {
       "title": "圖書館換證系統維護通知",
       "org": "圖書館",
-      "summary": "9 月 14 日 02:00–06:00 進行系統維護，期間虛擬證無法使用。",
+      "summary": "近日凌晨 02:00–06:00 進行系統維護，期間虛擬證無法使用。",
       "tags": ["圖書館"],
-      "postedAt": "2026-09-07T14:30:00Z"
+      "postedAt": "2026-10-14T14:30:00Z"
     },
     {
       "title": "校園徵才博覽會報名開始",
       "org": "學務處",
-      "summary": "本年度校園徵才博覽會將於 10 月 22 日舉行，即日起開放報名。",
+      "summary": "本年度校園徵才博覽會即日起開放報名。",
       "tags": ["活動", "就業"],
-      "postedAt": "2026-09-05T11:00:00Z"
+      "postedAt": "2026-10-12T11:00:00Z"
     }
   ],
 
   "calendar": [
     { "title": "開學日", "date": "2026-09-14", "source": "semester" },
-    { "title": "中秋節", "date": "2026-09-25", "source": "holiday" },
-    { "title": "期中考週", "date": "2026-11-09", "source": "exam" }
+    { "title": "中秋節", "date": "2026-10-21", "source": "holiday" },
+    { "title": "期中考週", "date": "2026-10-19", "source": "exam" }
   ],
 
   "courseChanges": [
@@ -398,7 +399,7 @@
             ],
             "submission": {
               "status": "draft",
-              "time": "2026-09-13T21:40",
+              "time": "2026-10-11T21:40",
               "text": {
                 "zh": "<p>草稿：目前完成插入與旋轉，刪除還在寫。</p>",
                 "en": "<p>Draft: insertion and rotations done, deletion still in progress.</p>"
@@ -457,8 +458,8 @@
               "en": "Homework 3: balanced binary trees"
             },
             "message": {
-              "zh": "<p>作業三已公布，繳交期限為 <strong>10 月 15 日 23:59</strong>。請實作 AVL 樹的插入與刪除，並附上測試結果。</p><p>遲交每日扣 10%。</p>",
-              "en": "<p>Homework 3 is out and due <strong>October 15, 23:59</strong>. Implement insertion and deletion for an AVL tree and include your test results.</p><p>Late work loses 10% a day.</p>"
+              "zh": "<p>作業三已公布，請於作業頁面所列期限前繳交。請實作 AVL 樹的插入與刪除，並附上測試結果。</p><p>遲交每日扣 10%。</p>",
+              "en": "<p>Homework 3 is out; hand it in by the deadline on its assignment page. Implement insertion and deletion for an AVL tree and include your test results.</p><p>Late work loses 10% a day.</p>"
             },
             "attachments": [
               {
@@ -509,8 +510,8 @@
               "en": "Midterm scope and room"
             },
             "message": {
-              "zh": "<p>期中考將於 <strong>11 月 4 日</strong>上課時間舉行，地點 TR-313。</p><ol><li>範圍：第 1–7 章</li><li>可攜帶一張 A4 手寫筆記</li></ol><p>考古題請見<a href=\"https://moodle2.ntust.edu.tw/course/view.php?id=90501\">課程頁面</a>。</p>",
-              "en": "<p>The midterm is on <strong>November 4</strong> in class time, room TR-313.</p><ol><li>Scope: chapters 1–7</li><li>One handwritten A4 sheet allowed</li></ol><p>Past papers are on the <a href=\"https://moodle2.ntust.edu.tw/course/view.php?id=90501\">course page</a>.</p>"
+              "zh": "<p>期中考將於<strong>期中考週</strong>上課時間舉行，地點 TR-313。</p><ol><li>範圍：第 1–7 章</li><li>可攜帶一張 A4 手寫筆記</li></ol><p>考古題請見<a href=\"https://moodle2.ntust.edu.tw/course/view.php?id=90501\">課程頁面</a>。</p>",
+              "en": "<p>The midterm is in class time <strong>during midterm week</strong>, room TR-313.</p><ol><li>Scope: chapters 1–7</li><li>One handwritten A4 sheet allowed</li></ol><p>Past papers are on the <a href=\"https://moodle2.ntust.edu.tw/course/view.php?id=90501\">course page</a>.</p>"
             }
           }
         ],
@@ -1052,8 +1053,8 @@
               "en": "Lab 2 deadline extended"
             },
             "message": {
-              "zh": "<p>實驗二繳交期限延長至 <strong>10 月 20 日</strong>。</p>",
-              "en": "<p>The Lab 2 deadline is extended to <strong>October 20</strong>.</p>"
+              "zh": "<p>實驗二繳交期限<strong>延長五天</strong>，新期限請見作業頁面。</p>",
+              "en": "<p>The Lab 2 deadline is <strong>extended by five days</strong>; the new one is on its assignment page.</p>"
             }
           }
         ],
@@ -1127,7 +1128,7 @@
             },
             "submission": {
               "status": "submitted",
-              "time": "2026-09-11T22:15",
+              "time": "2026-10-09T22:15",
               "files": [
                 {
                   "name": "exercises-4.pdf",
@@ -1139,7 +1140,7 @@
               "comments": [
                 {
                   "author": { "zh": "T10101 @ 李老師", "en": "T10101 @ Lee" },
-                  "time": "2026-09-13T10:20",
+                  "time": "2026-10-11T10:20",
                   "content": {
                     "zh": "<p>4.2 第 7 題的特徵值算錯了，請再檢查一次。</p>",
                     "en": "<p>The eigenvalues in 4.2 exercise 7 are off, please check again.</p>"
@@ -1147,7 +1148,7 @@
                 },
                 {
                   "author": { "zh": "B11300001 @ 示範學生", "en": "B11300001 @ Demo Student" },
-                  "time": "2026-09-13T14:05",
+                  "time": "2026-10-11T14:05",
                   "content": {
                     "zh": "<p>已重新計算，第二頁為更正版。</p>",
                     "en": "<p>Recomputed; page 2 is the corrected version.</p>"
@@ -1156,7 +1157,7 @@
               ],
               "grade": {
                 "grade": "92.00 / 100.00",
-                "gradedAt": "2026-09-14T10:00",
+                "gradedAt": "2026-10-12T10:00",
                 "feedback": {
                   "zh": "<p>第 7 題更正後正確，整體很完整。</p>",
                   "en": "<p>Exercise 7 is right after the correction; thorough work overall.</p>"

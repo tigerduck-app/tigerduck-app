@@ -29,10 +29,12 @@ nonisolated struct MailDemoFixture: Sendable {
 
     static let shared: MailDemoFixture? = load(from: .main)
 
-    static func load(from bundle: Bundle, in language: DemoLanguage = .shown) -> MailDemoFixture? {
+    static func load(
+        from bundle: Bundle, in language: DemoLanguage = .shown, today: Date = AppClock.now()
+    ) -> MailDemoFixture? {
         guard let url = bundle.url(forResource: "demo", withExtension: "json"),
               let data = try? Data(contentsOf: url),
-              let file = try? JSONDecoder().decode(File.self, from: data) else { return nil }
+              let file = try? JSONDecoder().decode(File.self, from: DemoTime.shifted(data, to: today)) else { return nil }
         return MailDemoFixture(file.mail, in: language)
     }
 

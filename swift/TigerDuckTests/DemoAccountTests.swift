@@ -100,7 +100,7 @@ struct DemoAccountTests {
         let url = try #require(Bundle.main.url(forResource: "demo", withExtension: "json"))
         let raw = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(raw.keys) == [
-            "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
+            "anchor", "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
             "assignments", "bulletins", "calendar", "courseChanges", "scores", "clubs", "moodle", "emptyClassroom",
             "informationSystem",
         ])
