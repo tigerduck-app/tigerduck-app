@@ -53,7 +53,7 @@ struct DemoAccount: AccountScoped {
             write(fixture, for: startSignIn(in: session))
         } else if !kept, Defaults[stores.demoSignedIn] || current.isDemo {
             if current.isDemo { session.endSignIn() }
-            leave(for: session.signIns.currentSignIn)
+            leave(for: session.signIns.currentSignIn, afterCurrentDemo: current.isDemo)
         }
     }
 
@@ -74,13 +74,15 @@ struct DemoAccount: AccountScoped {
 
     /// Ends what the demo keeps outside the stores a sign-out clears, writing for `signIn`, the one
     /// after the demo's: the public course-change feed, its clubs, shown in memory, with their
-    /// subscriptions, its transcript, and the library and mail sign-ins it made.
-    func leave(for signIn: SignIn) {
-        Defaults.reset(stores.demoSignedIn)
+    /// subscriptions, its transcript, and the library and mail sign-ins it made. The clubs' unsent
+    /// mark is the demo's own only `afterCurrentDemo`. Each step can run again, and the demo stays
+    /// marked until the last, so the next launch's `resume` finishes an end cut short.
+    func leave(for signIn: SignIn, afterCurrentDemo: Bool) {
         stores.keepCourseChanges(Data())
-        stores.dropClubs((fixture?.clubs ?? []).map(\.id), signIn)
+        stores.dropClubs((fixture?.clubs ?? []).map(\.id), afterCurrentDemo, signIn)
         if let fixture { stores.dropScores(fixture.normalizedStudentId) }
         stores.signOutServices()
+        Defaults.reset(stores.demoSignedIn)
     }
 
     func write(_ fixture: DemoFixture, for signIn: SignIn) {
@@ -178,8 +180,8 @@ struct DemoStores {
         ClubDirectory.shared.show($0)
         ClubActivities.shared.show($1)
     }
-    var dropClubs: (_ ids: [Int], _ signIn: SignIn) -> Void = {
-        ClubSubscriptions.shared.forget($0, for: $1)
+    var dropClubs: (_ ids: [Int], _ withUnsentMark: Bool, _ signIn: SignIn) -> Void = {
+        ClubSubscriptions.shared.forget($0, withUnsentMark: $1, for: $2)
         ClubDirectory.shared.showStored()
         ClubActivities.shared.showStored()
     }

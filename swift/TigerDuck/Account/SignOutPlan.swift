@@ -68,7 +68,7 @@ extension SignOutPlan {
             stopWork: stopWork,
             endSession: { ended in
                 auth.logout()
-                if ended.isDemo { auth.deps.demo.leave(for: auth.session.signIns.currentSignIn) }
+                if ended.isDemo { auth.deps.demo.leave(for: auth.session.signIns.currentSignIn, afterCurrentDemo: true) }
                 let calls = endBackendSession()
                 return { auth.startSignOutCalls(calls) }
             },

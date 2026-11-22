@@ -87,7 +87,7 @@ struct DemoAccountTests {
                 calls.clubs = clubs
                 calls.clubActivities = activities
             },
-            dropClubs: { ids, _ in calls.droppedClubs += ids },
+            dropClubs: { ids, _, _ in calls.droppedClubs += ids },
             dropScores: { NTUSTScoreService.invalidateCache(studentId: $0, files: ScoreReportFiles(folders: cache.folders)) },
             signOutServices: { calls.servicesSignedOut += 1 },
             subscribeClub: { id, _ in calls.subscribedClubs.append(id) },
@@ -382,6 +382,77 @@ struct DemoAccountTests {
             #expect(ClubSubscriptionsDocument(json: saved).subscribedIDs == [93])
             #expect(subscriptions.hasUnsentChanges)
         }
+    }
+
+    @Test("the demo still ended behind the lock screen drops its own clubs' unsent mark once the Keychain reads back")
+    func theCurrentDemosEndDropsItsUnsentMark() async throws {
+        try await withExclusiveRealDefaults {
+            let subscriptions = ClubSubscriptions.shared
+            subscriptions.forget()
+            defer { subscriptions.forget() }
+            let folder = Folder()
+            var demo = Self.account(folder)
+            demo.stores.dropClubs = DemoStores().dropClubs
+            demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+            let keychain = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
+            let launch = AccountSession(signIns: SignInSeries())
+            keychain.isLocked = true
+            SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+            for id in [990001, 990002] { subscriptions.subscribe(id, for: launch.signIns.currentSignIn) }
+            #expect(subscriptions.hasUnsentChanges)
+
+            keychain.isLocked = false
+            SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+
+            #expect(!launch.signIns.currentSignIn.isDemo)
+            #expect(subscriptions.subscribedIDs.isEmpty)
+            #expect(!subscriptions.hasUnsentChanges)
+        }
+    }
+
+    @Test("each step of the demo's end runs while the demo is still marked, so a cut-short end is run again")
+    func theMarkOutlastsEveryStep() {
+        let folder = Folder()
+        let calls = Calls()
+        var demo = Self.account(folder, calls: calls)
+        var marked: [Bool] = []
+        demo.stores.keepCourseChanges = { _ in marked.append(Defaults[folder.demoSignedIn]) }
+        demo.stores.dropClubs = { _, _, _ in marked.append(Defaults[folder.demoSignedIn]) }
+        demo.stores.dropScores = { _ in marked.append(Defaults[folder.demoSignedIn]) }
+        demo.stores.signOutServices = { marked.append(Defaults[folder.demoSignedIn]) }
+        demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+
+        demo.leave(for: testSignIn, afterCurrentDemo: false)
+
+        #expect(marked == [true, true, true, true])
+        #expect(!Defaults[folder.demoSignedIn])
+    }
+
+    @Test("a demo end cut short after the clubs is finished at the next launch, and a second end changes nothing")
+    func aCutShortEndIsFinishedAtTheNextLaunch() throws {
+        let folder = Folder()
+        let calls = Calls()
+        let demo = Self.account(folder, calls: calls)
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: AccountSession(signIns: SignInSeries())))
+        demo.stores.keepCourseChanges(Data())
+        demo.stores.dropClubs([990001, 990002], true, testSignIn)
+        let scores = ScoreReportFiles(folders: folder.cache.folders)
+        let keychain = LockablePhoneKeychain()
+        let launch = AccountSession(signIns: SignInSeries())
+
+        SecureStore.$sharedForTesting.withValue(keychain) {
+            KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: "B11399001")
+            KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: "an-account")
+            demo.resume(in: launch)
+        }
+        #expect(!Defaults[folder.demoSignedIn])
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) == nil)
+        #expect(calls.servicesSignedOut == 1)
+
+        demo.leave(for: launch.signIns.currentSignIn, afterCurrentDemo: false)
+        #expect(!Defaults[folder.demoSignedIn])
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) == nil)
+        #expect(calls.droppedClubs == [990001, 990002, 990001, 990002, 990001, 990002])
     }
 
     @Test("the demo timetable is there in either course language, each in its own")
