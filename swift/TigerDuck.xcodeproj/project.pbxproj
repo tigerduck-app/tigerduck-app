@@ -299,6 +299,13 @@
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
+		DC0DE00730AA000100000001 /* Exceptions for "TigerDuckUITests" folder in "TigerDuckWatch Watch AppUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				DemoFixture.swift,
+			);
+			target = B21DC6A72FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -324,6 +331,9 @@
 		};
 		424C46722F6E763E009D1DDA /* TigerDuckUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DC0DE00730AA000100000001 /* Exceptions for "TigerDuckUITests" folder in "TigerDuckWatch Watch AppUITests" target */,
+			);
 			path = TigerDuckUITests;
 			sourceTree = "<group>";
 		};
