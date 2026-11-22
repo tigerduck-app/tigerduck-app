@@ -1,8 +1,7 @@
 import XCTest
 
-/// The Watch's App Store screenshots of the demo account the paired phone signed in to: today's
-/// classes, the next class and the library QR. `tools/app_store_screenshots.py` runs it and passes
-/// `SCREENSHOTS_DIR`; without it the test skips.
+/// `tools/app_store_screenshots.py` runs this with `SCREENSHOTS_DIR`, after signing the paired phone
+/// in to the demo account; without it the test skips.
 final class WatchScreenshotTests: XCTestCase {
     @MainActor
     func testScreens() throws {

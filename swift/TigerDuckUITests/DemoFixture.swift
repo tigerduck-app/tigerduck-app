@@ -1,6 +1,6 @@
 import Foundation
 
-/// What the tests need from `demo.json`, read from the checkout this test was built from.
+/// Read from the source checkout, which only a simulator's test can reach.
 struct DemoFixture: Decodable {
     let studentId: String
     let password: String
@@ -11,6 +11,7 @@ struct DemoFixture: Decodable {
     struct Course: Decodable {
         let courseNo: String
         let name: Text
+        let classroom: String?
     }
 
     struct Assignment: Decodable {

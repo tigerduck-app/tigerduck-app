@@ -1,8 +1,6 @@
 import XCTest
 
-/// The App Store screenshots, signed in as the demo account. `tools/app_store_screenshots.py` runs
-/// these on each device and language and passes `SCREENSHOTS_DIR`; without it every test skips.
-/// The iPad takes the first seven.
+/// `tools/app_store_screenshots.py` runs these with `SCREENSHOTS_DIR`; without it they skip.
 final class AppStoreScreenshotTests: XCTestCase {
     private var app: XCUIApplication!
     private var outputDirectory: URL!
@@ -30,7 +28,7 @@ final class AppStoreScreenshotTests: XCTestCase {
     override func tearDownWithError() throws {
         guard let outputDirectory, (testRun?.totalFailureCount ?? 0) > 0 else { return }
         let name = name.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { !$0.isEmpty }.last ?? "test"
-        try? app.debugDescription.write(
+        try? [app.debugDescription, springboard.debugDescription].joined(separator: "\n\n").write(
             to: outputDirectory.appending(path: "\(name)-failed.txt"), atomically: true, encoding: .utf8
         )
     }
@@ -113,6 +111,13 @@ final class AppStoreScreenshotTests: XCTestCase {
         XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         XCUIDevice.shared.perform(NSSelectorFromString("pressLockButton"))
         XCTAssertTrue(wait(timeout: 30) { self.liveActivity.exists }, "no Live Activity on the Lock Screen")
+        // The first time, iOS asks under the activity whether to allow the app's Live Activities,
+        // with Allow second.
+        let answers = springboard.buttons.matching(identifier: "swipe-action-button-identifier")
+        if answers.count == 2 {
+            answers.element(boundBy: 1).tap()
+            XCTAssertTrue(answers.firstMatch.waitForNonExistence(timeout: 10))
+        }
         capture("10-live-activity-lock-screen")
         XCUIDevice.shared.press(.home)
     }
@@ -183,18 +188,19 @@ final class AppStoreScreenshotTests: XCTestCase {
         tap(tabButton(key))
     }
 
-    /// Opens a feature from its tab, or from More when it has none.
     private func openFeature(_ key: String) {
         let shortKey = key + "_short"
         if tabButton(shortKey).exists {
             openTab(shortKey)
         } else {
             openTab("feature_more_short")
-            tap(app.buttons[text(key)].firstMatch)
+            let row = app.buttons[text(key)].firstMatch
+            tap(row)
+            XCTAssertTrue(row.waitForNonExistence(timeout: 15))
         }
     }
 
-    /// The tab bar's button on a phone, the floating tab bar's on an iPad.
+    /// An iPad's floating tab bar is not in `tabBars`.
     private func tabButton(_ key: String) -> XCUIElement {
         let label = text(key)
         let phone = app.tabBars.buttons[label]
@@ -209,10 +215,12 @@ final class AppStoreScreenshotTests: XCTestCase {
         XCTAssertTrue(row.waitForNonExistence(timeout: 15))
     }
 
+    /// The Lock Screen's activity names its course; the Dynamic Island's compact one, only the room.
     private var liveActivity: XCUIElement {
-        let names = DemoFixture.shared.courseNames.map { NSPredicate(format: "label CONTAINS %@", $0) }
+        let texts = DemoFixture.shared.courses.flatMap { [$0.name.shown, $0.classroom].compactMap(\.self) }
+        let labels = texts.map { NSPredicate(format: "label CONTAINS %@", $0) }
         return springboard.descendants(matching: .any)
-            .matching(NSCompoundPredicate(orPredicateWithSubpredicates: names)).firstMatch
+            .matching(NSCompoundPredicate(orPredicateWithSubpredicates: labels)).firstMatch
     }
 
     private func courseButton(_ name: String) -> XCUIElement {
@@ -225,16 +233,14 @@ final class AppStoreScreenshotTests: XCTestCase {
 
     // MARK: - Helpers
 
-    /// The app's text for `key` in the device's language, from the copy of the app's strings this
-    /// bundle carries.
+    /// The target's Generate Localizations phase gives this bundle the app's strings.
     private func text(_ key: String) -> String {
         let value = Bundle(for: Self.self).localizedString(forKey: key, value: nil, table: nil)
         XCTAssertNotEqual(value, key, "no string for \(key)")
         return value
     }
 
-    /// Taps the button labeled with `key`'s text that is on screen, as the onboarding pages keep
-    /// their neighbors' buttons in the tree.
+    /// The onboarding pages keep their neighbors' buttons in the tree.
     private func tapButton(_ key: String, file: StaticString = #filePath, line: UInt = #line) {
         let buttons = app.buttons.matching(NSPredicate(format: "label == %@", text(key)))
         var shown: XCUIElement?
