@@ -29,7 +29,7 @@ final class DeviceSurfaceSyncer {
     struct Surfaces {
         var widgets: (_ forceReload: Bool) -> Void
         var watch: () -> Void = {}
-        var liveActivity: () -> Void = {}
+        var liveActivity: (_ redraw: Bool) -> Void = { _ in }
     }
 
     static let debounce: Duration = .milliseconds(250)
@@ -106,8 +106,9 @@ final class DeviceSurfaceSyncer {
         last = now
         surfaces.watch()
         guard !now.differsOnlyInVisualPreset(from: previous) else { return }
-        surfaces.widgets(previous.language != now.language || previous.unobserved.locale != now.unobserved.locale)
-        surfaces.liveActivity()
+        let isReworded = previous.language != now.language || previous.unobserved.locale != now.unobserved.locale
+        surfaces.widgets(isReworded)
+        surfaces.liveActivity(isReworded)
     }
 }
 
