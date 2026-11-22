@@ -194,6 +194,10 @@ final class AppStoreScreenshotTests: XCTestCase {
         } else {
             openTab("feature_more_short")
             let row = app.buttons[text(key)].firstMatch
+            // More makes its rows as they scroll into view, as on the iPhone Duo's cover screen.
+            for _ in 0..<3 where !row.waitForExistence(timeout: 3) {
+                app.swipeUp()
+            }
             tap(row)
             XCTAssertTrue(row.waitForNonExistence(timeout: 15))
         }
@@ -255,15 +259,25 @@ final class AppStoreScreenshotTests: XCTestCase {
         shown?.tap()
     }
 
-    /// After the sign-in, iOS offers to save the password in an alert, at a moment no element marks;
-    /// Not Now is its first button.
-    private func tapButtonPastPasswordOffer(_ key: String) {
+    /// After the sign-in, iOS offers to save the password in an alert, once, at a moment no element
+    /// marks; Not Now is its first button.
+    private func tapButtonPastPasswordOffer(_ key: String, file: StaticString = #filePath, line: UInt = #line) {
         let offer = app.alerts.firstMatch
-        _ = wait { offer.exists || self.shownButton(key) != nil }
-        if offer.exists {
+        var declined = false
+        while true {
+            var shown: XCUIElement?
+            let found = wait {
+                shown = self.shownButton(key)
+                return shown != nil || (!declined && offer.exists)
+            }
+            XCTAssertTrue(found, "no \(key) button on screen", file: file, line: line)
+            guard found, !declined, offer.exists else {
+                shown?.tap()
+                return
+            }
             offer.buttons.firstMatch.tap()
+            declined = true
         }
-        tapButton(key)
     }
 
     private func tap(_ element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
