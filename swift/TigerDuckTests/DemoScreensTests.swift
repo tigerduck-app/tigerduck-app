@@ -146,12 +146,22 @@ struct DemoScreensTests {
         }
     }
 
+    /// 09:00 in Taipei on the day the run starts, read once, so that the dates written and the day the
+    /// screen shows agree across a midnight while the pictures still show the run's week.
+    private static let day = TaipeiTime.calendar.startOfDay(for: AppClock.now()).addingTimeInterval(9 * 3600)
+
+    private static func written(_ folder: DemoAccountTests.Folder, for signIn: SignIn) throws -> DemoAccount {
+        var account = DemoAccountTests.account(folder)
+        account.now = { day }
+        account.write(try #require(DemoFixture.load(from: .main, today: day)), for: signIn)
+        return account
+    }
+
     @Test("the demo's home lists today's classes and the assignments due in the coming days", arguments: looks)
     func home(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let folder = DemoAccountTests.Folder()
-            let account = DemoAccountTests.account(folder)
-            account.write(try #require(account.fixture), for: DemoAccountTests.demoSignIn())
+            _ = try Self.written(folder, for: DemoAccountTests.demoSignIn())
             let courses = CanonicalCourseProvider(courses: folder.cache.courses).currentCourses()
             let due = folder.cache.assignments.loadAssignments().ofTimetable(courses).upcomingSorted()
             #expect(due.map(\.title) == ["Homework 3: Balanced Binary Trees", "Lab 2: Process Scheduling"])
@@ -179,12 +189,12 @@ struct DemoScreensTests {
     func calendar(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
             let folder = DemoAccountTests.Folder()
-            let account = DemoAccountTests.account(folder)
             let signIn = DemoAccountTests.demoSignIn()
-            account.write(try #require(account.fixture), for: signIn)
-            let context = account.stores.moodle(DemoAccountTests.studentId, signIn)
+            let context = try Self.written(folder, for: signIn).stores.moodle(DemoAccountTests.studentId, signIn)
             let model = CalendarViewModel(assignments: folder.cache.assignments, courses: folder.cache.courses)
             model.load { context }
+            model.selectedDate = Self.day
+            model.displayedMonth = Self.day
             let today = model.eventsForSelectedDate
             #expect(today.map(\.title) == ["Homework 3: Balanced Binary Trees"])
 
