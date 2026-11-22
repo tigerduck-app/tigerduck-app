@@ -63,36 +63,3 @@ private nonisolated struct WatchSchedule {
         item.change.map { sources[item.meeting].changes[$0].held } ?? sources[item.meeting].meeting
     }
 }
-
-nonisolated extension ClassDay {
-    public func headline(in language: WatchLanguage) -> String {
-        switch self {
-        case .today: return language.string("watch_next")
-        case .tomorrow: return language.string("widget_tomorrow")
-        case .later(let weekday): return Self.caption(of: weekday, in: language)
-        }
-    }
-
-    public func inlineCaption(_ time: String, in language: WatchLanguage) -> String {
-        switch self {
-        case .today:
-            return time
-        case .tomorrow:
-            return language.format("widget_tomorrow_time", time)
-        case .later(let weekday):
-            return "\(Self.caption(of: weekday, in: language)) \(time)"
-        }
-    }
-
-    private static func caption(of weekday: Int, in language: WatchLanguage) -> String {
-        switch weekday {
-        case 1: return language.string("weekday_mon_caption")
-        case 2: return language.string("weekday_tue_caption")
-        case 3: return language.string("weekday_wed_caption")
-        case 4: return language.string("weekday_thu_caption")
-        case 5: return language.string("weekday_fri_caption")
-        case 6: return language.string("weekday_sat_caption")
-        default: return language.string("weekday_sun_caption")
-        }
-    }
-}

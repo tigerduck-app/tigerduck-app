@@ -9,7 +9,7 @@ struct WatchRoomLayoutTests {
 
     private let magenta = (red: 255, green: 0, blue: 255)
     private let longName = "Advanced Topics in Data Structures and Algorithms"
-    private let en = WatchLanguage(tag: "en")
+    private let en = AppLanguage(tag: "en")
 
     private func course(name: String, room: String, start: String = "10:20", end: String = "12:10") -> WatchCourse {
         WatchCourse(

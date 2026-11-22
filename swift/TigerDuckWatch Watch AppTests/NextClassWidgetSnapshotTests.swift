@@ -84,7 +84,7 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
         for language in Self.pictureLanguages {
             let now = pictureCourse(name: language.now, room: "IB-1005 階梯教室", color: "#4ECDC4", start: "10:20", end: "12:10")
             let next = pictureCourse(name: language.next, room: "TR-412", color: "#F5A623", start: "13:20", end: "14:10")
-            let words = WatchLanguage(tag: language.tag)
+            let words = AppLanguage(tag: language.tag)
             let during = NextClassEntry(
                 date: Date(), current: now, next: next, nextDay: .today, currentSpan: span,
                 accentHex: "#FF8800", languageTag: language.tag, relevance: nil
@@ -109,8 +109,8 @@ final class NextClassWidgetSnapshotTests: XCTestCase {
                 VStack(spacing: 12) {
                     ClassCard(title: words.string("watch_now"), course: now, span: span, policy: policy, language: words)
                     ClassCard(
-                        title: NextClassResolver.Day.today.headline(in: words), course: next, span: nil, policy: policy,
-                        language: words
+                        title: NextClassResolver.Day.today.headline(todayKey: "watch_next", in: words), course: next,
+                        span: nil, policy: policy, language: words
                     )
                 }
                 .padding(.horizontal, 8)

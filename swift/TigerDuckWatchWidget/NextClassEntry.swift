@@ -12,7 +12,7 @@ nonisolated struct NextClassEntry: TimelineEntry {
     let languageTag: String?
     let relevance: TimelineEntryRelevance?
 
-    var language: WatchLanguage { WatchLanguage(tag: languageTag) }
+    var language: AppLanguage { AppLanguage(tag: languageTag) }
 
     func captioned(_ time: String) -> String {
         current == nil ? nextDay.inlineCaption(time, in: language) : time

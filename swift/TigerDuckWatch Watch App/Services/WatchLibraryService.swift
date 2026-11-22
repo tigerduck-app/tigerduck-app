@@ -1,5 +1,6 @@
 import Foundation
 import os
+import TigerDuckCore
 
 enum WatchLibraryServiceError: LocalizedError {
     case credentialsNotFound
@@ -9,14 +10,14 @@ enum WatchLibraryServiceError: LocalizedError {
     case offline
     case pinMismatch
 
-    var errorDescription: String? { message(in: WatchLanguage(tag: nil)) }
+    var errorDescription: String? { message(in: AppLanguage(tag: nil)) }
 
     /// An error from outside this enum keeps the system's text, in the Watch's own language.
-    static func message(for error: Error, in language: WatchLanguage) -> String {
+    static func message(for error: Error, in language: AppLanguage) -> String {
         (error as? Self)?.message(in: language) ?? error.localizedDescription
     }
 
-    func message(in language: WatchLanguage) -> String {
+    func message(in language: AppLanguage) -> String {
         switch self {
         case .offline:
             return language.string("error_network_unavailable")

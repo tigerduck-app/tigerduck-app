@@ -10,18 +10,18 @@ func localizedValue(_ key: String, in localization: String) throws -> String {
 }
 
 @MainActor
-struct WatchLanguageTests {
+struct WatchAppLanguageTests {
 
-    private let system = WatchLanguage(tag: nil)
+    private let system = AppLanguage(tag: nil)
 
     @Test func beforeATagArrives_theWatchsOwnLanguageIsUsed() {
         #expect(system.locale == .current)
-        #expect(WatchLanguage(tag: "ja").locale.identifier == "ja")
+        #expect(AppLanguage(tag: "ja").locale.identifier == "ja")
         #expect(system.string("watch_no_upcoming_classes") == String(localized: "watch_no_upcoming_classes"))
     }
 
     @Test func libraryErrorsFollowTheLanguageChosenOnThePhone() throws {
-        let zh = WatchLanguage(tag: "zh-Hant")
+        let zh = AppLanguage(tag: "zh-Hant")
         let offline = WatchLibraryServiceError.message(for: WatchLibraryServiceError.offline, in: zh)
         #expect(offline == (try localizedValue("error_network_unavailable", in: "zh-Hant")))
         let timeout = URLError(.timedOut)
@@ -30,11 +30,11 @@ struct WatchLanguageTests {
 
     @Test func aFormatFillsTheTemplateOfTheTagsLanguage() throws {
         let minutes = String(format: try localizedValue("watch_relative_minutes_ago_short", in: "zh-Hant"), 5)
-        #expect(WatchLanguage(tag: "zh-Hant").format("watch_relative_minutes_ago_short", 5) == minutes)
+        #expect(AppLanguage(tag: "zh-Hant").format("watch_relative_minutes_ago_short", 5) == minutes)
     }
 
     @Test func aSpokenTimeRangeFollowsTheLanguageChosenOnThePhone() {
-        let zh = WatchLanguage(tag: "zh-Hant")
+        let zh = AppLanguage(tag: "zh-Hant")
         #expect(TimeRange.spoken("10:20", "12:10") { zh.string($0) } == "10:20 至 12:10")
     }
 }

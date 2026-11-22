@@ -24,7 +24,7 @@ struct NowNextView: View {
                         }
                         if let next = result.next {
                             ClassCard(
-                                title: result.nextDay.headline(in: store.language), course: next, span: nil,
+                                title: result.nextDay.headline(todayKey: "watch_next", in: store.language), course: next, span: nil,
                                 policy: policy, language: store.language
                             )
                         }
@@ -63,7 +63,7 @@ struct ClassCard: View {
     let course: WatchCourse
     let span: ClosedRange<Date>?
     let policy: WatchVisualStylePolicy
-    let language: WatchLanguage
+    let language: AppLanguage
 
     var caption: String { "\(title) · \(TimeRange.text(course.startHHmm, course.endHHmm))" }
     var spokenCaption: String { "\(title), \(TimeRange.spoken(course.startHHmm, course.endHHmm) { language.string($0) })" }
