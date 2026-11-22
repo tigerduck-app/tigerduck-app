@@ -51,8 +51,9 @@ struct DemoAccount: AccountScoped {
         }
         if kept, !current.isDemo {
             write(fixture, for: startSignIn(in: session))
-        } else if !kept {
-            if Defaults[stores.demoSignedIn] { Defaults.reset(stores.demoSignedIn) }
+        } else if !kept, Defaults[stores.demoSignedIn] || current.isDemo {
+            Defaults.reset(stores.demoSignedIn)
+            dropShownData()
             if current.isDemo { session.endSignIn() }
         }
     }
@@ -74,8 +75,7 @@ struct DemoAccount: AccountScoped {
 
     func leave() {
         Defaults.reset(stores.demoSignedIn)
-        stores.keepCourseChanges(Data())
-        stores.showStoredClubs()
+        dropShownData()
         if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
         #if os(iOS)
         if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
@@ -106,6 +106,13 @@ struct DemoAccount: AccountScoped {
         }
         showClubs(of: fixture)
         for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
+    }
+
+    /// What the demo keeps outside the stores a sign-out clears: the public course-change feed, and
+    /// the clubs, shown in memory, with their subscriptions.
+    private func dropShownData() {
+        stores.keepCourseChanges(Data())
+        stores.dropClubs()
     }
 
     /// The clubs live in memory only, so a launch behind the lock screen, which writes nothing else,
@@ -175,7 +182,8 @@ struct DemoStores {
         ClubDirectory.shared.show($0)
         ClubActivities.shared.show($1)
     }
-    var showStoredClubs: () -> Void = {
+    var dropClubs: () -> Void = {
+        ClubSubscriptions.shared.forget()
         ClubDirectory.shared.showStored()
         ClubActivities.shared.showStored()
     }

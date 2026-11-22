@@ -46,7 +46,7 @@ struct DemoAccountTests {
         var clubs: [ClubCard] = []
         var clubActivities: [ClubActivity] = []
         var subscribedClubs: [Int] = []
-        var storedClubsShown = 0
+        var clubsDropped = 0
     }
 
     @MainActor
@@ -86,7 +86,7 @@ struct DemoAccountTests {
                 calls.clubs = clubs
                 calls.clubActivities = activities
             },
-            showStoredClubs: { calls.storedClubsShown += 1 },
+            dropClubs: { calls.clubsDropped += 1 },
             subscribeClub: { id, _ in calls.subscribedClubs.append(id) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
             libraryIsKept: { false },
@@ -333,10 +333,11 @@ struct DemoAccountTests {
         #expect(folder.cache.courses.loadCourses(semester: CourseSelectionService.currentSemesterCode()).count == 5)
     }
 
-    @Test("the key kept without demo credentials ends the demo once the Keychain reads back")
+    @Test("the key kept without demo credentials ends the demo, its course changes and clubs once the Keychain reads back")
     func theKeyWithoutCredentialsEndsTheDemo() {
         let folder = Folder()
-        let demo = Self.account(folder)
+        let calls = Calls()
+        let demo = Self.account(folder, calls: calls)
         demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
         let keychain = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
         let launch = AccountSession(signIns: SignInSeries())
@@ -349,6 +350,8 @@ struct DemoAccountTests {
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
         #expect(!launch.signIns.currentSignIn.isDemo)
         #expect(!Defaults[folder.demoSignedIn])
+        #expect(calls.courseChanges == [Data()])
+        #expect(calls.clubsDropped == 1)
     }
 
     @Test("the demo timetable is there in either course language, each in its own")

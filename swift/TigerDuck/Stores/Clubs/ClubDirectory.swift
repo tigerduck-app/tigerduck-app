@@ -41,6 +41,8 @@ final class ClubDirectory {
     }
 
     func showStored() {
+        failure = nil
+        isUnderMaintenance = false
         guard let file = files.loadDirectory(), let read = try? ClubAPIList<ClubCard>.decode(file.body) else {
             stored = nil
             if !clubs.isEmpty { clubs = [] }

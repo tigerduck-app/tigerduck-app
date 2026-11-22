@@ -122,7 +122,7 @@ struct DemoFeatureDataTests {
             directory.show(clubs)
             feed.show(activities)
         }
-        account.stores.showStoredClubs = {
+        account.stores.dropClubs = {
             directory.showStored()
             feed.showStored()
         }
@@ -193,6 +193,28 @@ struct DemoFeatureDataTests {
         #expect(directory.failure == nil)
         #expect(feed.activities.map(\.id) == [991001, 991002])
         #expect(files.loadActivities() == nil)
+    }
+
+    @Test("a club fetch the demo refused leaves no failure once the stored directory shows again")
+    func theStoredDirectoryShowsWithoutTheDemosFailure() async {
+        let base = SettingsAPIStub.uniqueBaseURL()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SettingsAPIStub.self]
+        let client = ClubAPIClient(
+            baseURL: base, session: URLSession(configuration: configuration.refusingDemoRequests(with: DemoSeriesRefusal.self))
+        )
+        let root = FileManager.default.temporaryDirectory.appending(path: "DemoClubs-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let directory = ClubDirectory(files: ClubFiles(folders: CacheFolders(root: root)), client: client, chinese: { false })
+        DemoSeriesRefusal.series.startDemo()
+        defer { DemoSeriesRefusal.series.end() }
+
+        await directory.refresh()
+        #expect(directory.failure != nil)
+        directory.showStored()
+
+        #expect(directory.failure == nil)
+        #expect(!directory.isUnderMaintenance)
     }
 
     @Test("the demo's course changes stay through a refresh, which sends nothing, and leaving the demo drops them")
