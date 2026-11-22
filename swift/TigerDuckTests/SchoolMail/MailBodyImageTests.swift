@@ -81,6 +81,10 @@ struct MailBodyImageTests {
         let detail = try Self.detail(images: [:])
         let image = await MailBodyImage.load(Self.dataAddress(Self.png), in: detail, allowRemoteImages: false)
         #expect(image == MailBodyImage(data: Self.png, filename: "image.png"))
+        let escaped = Self.dataAddress(Self.png).replacingOccurrences(of: ",iVBOR", with: ",%69VBOR")
+        #expect(escaped.contains("%69"))
+        #expect(await MailBodyImage.load(escaped, in: detail, allowRemoteImages: false)
+                == MailBodyImage(data: Self.png, filename: "image.png"))
         let svg = Self.dataAddress(Self.svgMarkup, type: "image/svg+xml")
         #expect(await MailBodyImage.load(svg, in: detail, allowRemoteImages: false) == nil)
     }

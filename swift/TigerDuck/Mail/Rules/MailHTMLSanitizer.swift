@@ -81,11 +81,13 @@ nonisolated enum MailHTMLSanitizer {
         return dataImagePattern.firstMatch(in: source, options: [], range: range) != nil
     }
 
-    /// The bytes of a base64 `data:` image that `sanitize` keeps.
+    /// The bytes of a base64 `data:` image that `sanitize` keeps. The payload is percent-decoded
+    /// before base64, as the Fetch standard's `data:` URL processor and so WebKit do.
     static func dataImageBytes(_ source: String) -> Data? {
         guard isAllowedDataImage(source), let comma = source.firstIndex(of: ","),
               source[..<comma].lowercased().hasSuffix(";base64") else { return nil }
-        return Data(base64Encoded: String(source[source.index(after: comma)...]), options: .ignoreUnknownCharacters)
+        let payload = String(source[source.index(after: comma)...])
+        return Data(base64Encoded: payload.removingPercentEncoding ?? payload, options: .ignoreUnknownCharacters)
     }
 
     private static let fixedLengthPattern = try! NSRegularExpression(
