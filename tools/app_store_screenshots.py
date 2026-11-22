@@ -49,6 +49,7 @@ class Device:
     sizes: frozenset[tuple[int, int]]
     # AppStoreScreenshotTests' tests whose screens the device leaves out.
     skipped: tuple[str, ...] = ()
+    shows_date_in_status_bar: bool = False
 
 
 LIVE_ACTIVITY = ("test10LiveActivityLockScreen", "test11LiveActivityDynamicIsland")
@@ -62,17 +63,14 @@ DEVICES = (
     Device("iphone-duo", "iPhone Duo", "iOS", frozenset({(1398, 2034), (2007, 2853)}), LIVE_ACTIVITY),
     Device("ipad-pro-13", "iPad Pro 13-inch (M5)", "iOS", frozenset({(2064, 2752)}), (
         "test08Calendar", "test09LibraryQR", *LIVE_ACTIVITY, "test12EmptyClassrooms", "test13Clubs",
-    )),
+    ), shows_date_in_status_bar=True),
     Device("watch-46mm", "Apple Watch Series 12 (46mm)", "watchOS", frozenset({(416, 496)})),
 )
 # The phone the Watch pairs with and takes its data from.
 WATCH_PHONE = DEVICES[0]
 LANGUAGES = {"zh-Hant": "zh_TW", "en": "en_US"}
-# An ISO date would also pin the iPad's date, but its status bar then shows the date in English and
-# at times with the wrong weekday ("Fri Nov 24" for Tuesday, 24 November 2026). Under this override
-# the Lock Screen shows 09:41 on Saturday, 1 January.
 STATUS_BAR = [
-    "--time", "9:41", "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
+    "--dataNetwork", "wifi", "--wifiMode", "active", "--wifiBars", "3",
     "--cellularMode", "active", "--cellularBars", "4", "--batteryState", "discharging", "--batteryLevel", "100",
 ]
 
@@ -81,6 +79,19 @@ def pinned_clock(today: date) -> datetime:
     """09:41 on Tuesday of `today`'s week, the demo week's busiest day."""
     tuesday = today - timedelta(days=today.weekday()) + timedelta(days=1)
     return datetime.combine(tuesday, time(9, 41), TAIPEI)
+
+
+def status_bar_time(device: Device, language: str, instant: datetime) -> str:
+    """`simctl status_bar --time`: the pinned date and time, or the time alone where a date shows wrong.
+
+    simctl takes an ISO date only with milliseconds. Given one, an iPad's status bar shows the date in
+    English whatever the device's language, so an iPad in another language gets the time alone and
+    shows the real date in its language. On the Lock Screen a date's year becomes 2000 ("Fri Nov 24"
+    for Tuesday, 24 November 2026), and in zh-Hant any override shows Saturday, 1 January.
+    """
+    if device.shows_date_in_status_bar and language != "en":
+        return f"{instant.hour}:{instant.minute:02d}"
+    return instant.isoformat(timespec="milliseconds")
 
 
 def clock_argument(instant: datetime) -> str:
@@ -173,12 +184,12 @@ def set_language(udid: str, language: str, locale: str) -> None:
     boot(udid)
 
 
-def prepare(udid: str, device: Device, language: str) -> None:
+def prepare(udid: str, device: Device, language: str, instant: datetime) -> None:
     set_language(udid, language, LANGUAGES[language])
     if device.platform == "iOS":
         simctl("ui", udid, "appearance", "dark")
         simctl("status_bar", udid, "clear")
-        simctl("status_bar", udid, "override", *STATUS_BAR)
+        simctl("status_bar", udid, "override", "--time", status_bar_time(device, language, instant), *STATUS_BAR)
 
 
 def xcodebuild(arguments: list[str], log: Path, env: dict[str, str] | None = None) -> bool:
@@ -243,7 +254,8 @@ def main() -> int:
         slugs.add(WATCH_PHONE.slug)
     devices = [d for d in DEVICES if d.slug in slugs]
     languages = args.language or list(LANGUAGES)
-    clock = clock_argument(pinned_clock(datetime.now(TAIPEI).date()))
+    pinned = pinned_clock(datetime.now(TAIPEI).date())
+    clock = clock_argument(pinned)
     logs = args.output / "logs"
 
     udids = {device.slug: simulator(device) for device in devices}
@@ -258,7 +270,7 @@ def main() -> int:
         for device in devices:
             udid = udids[device.slug]
             print(f"{device.name}, {language}")
-            prepare(udid, device, language)
+            prepare(udid, device, language, pinned)
             folder = args.output / device.slug / language
             shutil.rmtree(folder, ignore_errors=True)
             folder.mkdir(parents=True)
