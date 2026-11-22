@@ -164,6 +164,21 @@ struct MailMessageViewModelTests {
         #expect(h.model.htmlTheme == .app)
     }
 
+    @Test func onlyTheFormattedMailOnTheLightPageDropsTheDivider() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        #expect(!h.model.formattedOnLightPage)
+        await h.model.load()
+        #expect(!h.model.formattedOnLightPage)
+        h.model.viewsInLightMode = true
+        #expect(h.model.formattedOnLightPage)
+        h.model.mode = .plain
+        #expect(!h.model.formattedOnLightPage)
+        h.model.mode = .formatted
+        h.model.viewsInLightMode = false
+        h.model.appearsLight = true
+        #expect(h.model.formattedOnLightPage)
+    }
+
     @Test func theLightAppearanceDrawsEveryMailOnTheLightPage() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
         await h.model.load()
@@ -610,6 +625,22 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.attachmentPins == [1])
     }
 
+    @Test func aTappedInlineImageIsWrittenToATemporaryFileUnderItsName() async throws {
+        var message = FakeMailClient.message(uid: 5, html: #"<p><img src="cid:logo@x"></p>"#)
+        message.detail?.inlineImages = ["logo@x": MailInlineImage(mimeType: "image/png", data: MailBodyImageTests.png)]
+        message.detail?.parts = [MailBodyPart(section: "2", contentType: "image/png", charset: nil, transferEncoding: "base64",
+                                              filename: "校徽.png", contentID: "logo@x", size: 3, isAttachment: false)]
+        let h = Self.harness(message)
+        await h.model.load()
+        let url = try #require(await h.model.prepareImage("tdcid:logo@x"))
+        #expect(url.lastPathComponent == "校徽.png")
+        #expect(try Data(contentsOf: url) == MailBodyImageTests.png)
+        #expect(h.model.downloading.isEmpty)
+        #expect(await h.model.prepareImage("tdcid:missing") == nil)
+        h.model.activity.downloading.insert(MailMessageActions.downloadKey(ofImage: "tdcid:logo@x"))
+        #expect(await h.model.prepareImage("tdcid:logo@x") == nil)
+    }
+
     @Test func aRepeatTapDuringAnAttachmentDownloadIsIgnored() async {
         let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
                                 filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)
@@ -783,6 +814,23 @@ struct MailMessageViewModelTests {
         let blocked = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false)
         #expect(blocked.contains("default-src 'none'; img-src tdcid: data:; style-src 'unsafe-inline'"))
         #expect(MailWebViewFactory.document(for: "", allowRemoteImages: true).contains("img-src tdcid: data: https: http:"))
+    }
+
+    @Test func theDocumentCannotBePinchedAndCarriesTheTextSize() {
+        let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false, textZoom: 130)
+        #expect(document.contains("maximum-scale=1, user-scalable=no"))
+        #expect(document.contains(#"<div id="mail" style="zoom:130%"><p>x</p></div>"#))
+        #expect(MailWebViewFactory.document(for: "", allowRemoteImages: false).contains("zoom:100%"))
+    }
+
+    @Test func theLightPageShadesItsTopAndBottomEdgeAndTheAppsPageHasNoEdge() {
+        let light = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: .light)
+        #expect(light.contains(
+            "body{padding:16px;box-shadow:inset 0 12px 12px -12px rgba(0,0,0,.5),inset 0 -12px 12px -12px rgba(0,0,0,.5);}"
+        ))
+        let app = MailWebViewFactory.document(for: "", allowRemoteImages: false)
+        #expect(app.contains("body{padding:0 16px;}"))
+        #expect(!app.contains("box-shadow"))
     }
 
     @Test func theDocumentIsDrawnOnTheAppsPage() {

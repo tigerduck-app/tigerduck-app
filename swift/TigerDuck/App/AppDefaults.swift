@@ -48,6 +48,7 @@ nonisolated extension Defaults.Keys {
         AppConstants.UserDefaultsKeys.browserAppearance,
         default: .automatic
     )
+    static let mailTextZoom = Key<Int>(AppConstants.UserDefaultsKeys.mailTextZoom, default: PageZoom.standard)
     static let moodleOpenTarget = Key<MoodleOpenTarget>(
         AppConstants.UserDefaultsKeys.moodleOpenTarget,
         default: .platformDefault

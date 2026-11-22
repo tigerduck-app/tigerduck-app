@@ -3,6 +3,9 @@ import SwiftUI
 import UIKit
 
 struct MailMessageView: View {
+    /// The screen's side margin, which the formatted body's own text inset repeats.
+    static let sideInset = TigerDuckTheme.Spacing.lg
+
     @State private var viewModel: MailMessageViewModel
     private let session: MailPageSession
     private let otherFolders: [String]
@@ -34,13 +37,21 @@ struct MailMessageView: View {
         otherFolders: [String],
         events: MailboxEvents
     ) {
-        _viewModel = State(initialValue: MailMessageViewModel(route: route, session: session, folderRoles: folderRoles, events: events))
-        self.session = session
+        self.init(
+            viewModel: MailMessageViewModel(route: route, session: session, folderRoles: folderRoles, events: events),
+            otherFolders: otherFolders
+        )
+    }
+
+    init(viewModel: MailMessageViewModel, otherFolders: [String] = []) {
+        _viewModel = State(initialValue: viewModel)
+        session = viewModel.session
         self.otherFolders = otherFolders
     }
 
     var body: some View {
         page
+        .toastHost()
         .background(Color.backgroundPrimary)
         .onChange(of: colorScheme, initial: true) { _, scheme in viewModel.appearsLight = scheme == .light }
         .navigationBarTitleDisplayMode(.inline)
@@ -129,15 +140,17 @@ struct MailMessageView: View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
             if let summary = viewModel.summary { MailMessageHeader(summary: summary) }
             MailMessageBanners(viewModel: viewModel)
-            Divider().background(Color.textSecondary)
+            if !viewModel.formattedOnLightPage {
+                Divider().background(Color.textSecondary)
+            }
             MailMessageContentView(viewModel: viewModel, webHeight: $webHeight, webLoaded: $webLoaded,
-                                   pendingLinkTarget: $pendingLinkTarget)
+                                   pendingLinkTarget: $pendingLinkTarget, onImageTap: previewImage)
             if !showsSource, let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
                 MailAttachmentList(parts: attachments, downloading: viewModel.downloading, isRisky: viewModel.isRisky,
                                    onOpen: open, onShare: share)
             }
         }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.horizontal, Self.sideInset)
         .padding(.top, TigerDuckTheme.Spacing.xl)
         .padding(.bottom, showsSource ? TigerDuckTheme.Spacing.lg : TigerDuckTheme.Spacing.xxl)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -154,6 +167,10 @@ struct MailMessageView: View {
             return
         }
         Task { previewURL = await viewModel.prepareAttachment(part) }
+    }
+
+    private func previewImage(_ source: String) {
+        Task { if let url = await viewModel.prepareImage(source) { previewURL = url } }
     }
 
     private func share(_ part: MailBodyPart) {

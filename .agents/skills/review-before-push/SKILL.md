@@ -83,6 +83,8 @@ a parser of outside input:
 - Normalize host names with `TLSPinMatcher.hostName` everywhere a host is compared.
 - Choose an allowlist over a denylist.
 - Feed each parser and loop empty, oversized and hostile input.
+- A parser of something the platform also reads, such as a `data:` URL, accepts every form the
+  platform accepts (percent-escapes, whitespace), or the two disagree on the same input.
 - A time or date read from parts checks each part's range before combining them.
 - Follow each credential: it reaches only the origin it belongs to.
 - Then an adversarial reviewer, read-only, starting from the diff without the author's account.
@@ -91,6 +93,8 @@ a parser of outside input:
 
 - The nearest `AGENTS.md` files, for example: no new responsibility on `AppState`; upgrade code
   only in `Migrations/`.
+- A height measured from web content counts text that overflows a fixed-size box, and still
+  shrinks when the content gets shorter.
 - Comments: run `python3 tools/check_comments.py check --base origin/dev`, then reread each new
   comment. It keeps a reason the code cannot state. Delete a comment that repeats the code,
   tells the history, names an earlier build or cites a path a reader cannot open.

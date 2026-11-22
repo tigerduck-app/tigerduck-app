@@ -35,6 +35,14 @@ nonisolated enum MailHTMLSanitizer {
     static let cidScheme = "tdcid"
     static let remoteImageAttribute = "data-remote-src"
 
+    /// The Content-ID a `tdcid:` address names, as `sanitize` wrote it from a `cid:` source.
+    static func contentID(ofCIDAddress address: String) -> String? {
+        let prefix = "\(cidScheme):"
+        guard address.lowercased().hasPrefix(prefix) else { return nil }
+        let raw = String(address.dropFirst(prefix.count))
+        return raw.removingPercentEncoding ?? raw
+    }
+
     private static let logger = Logger(subsystem: "org.ntust.app.TigerDuck", category: "Mail.Sanitizer")
 
     static let allowedTags = [
@@ -71,6 +79,15 @@ nonisolated enum MailHTMLSanitizer {
     private static func isAllowedDataImage(_ source: String) -> Bool {
         let range = NSRange(source.startIndex..., in: source)
         return dataImagePattern.firstMatch(in: source, options: [], range: range) != nil
+    }
+
+    /// The bytes of a base64 `data:` image that `sanitize` keeps. The payload is percent-decoded
+    /// before base64, as the Fetch standard's `data:` URL processor and so WebKit do.
+    static func dataImageBytes(_ source: String) -> Data? {
+        guard isAllowedDataImage(source), let comma = source.firstIndex(of: ","),
+              source[..<comma].lowercased().hasSuffix(";base64") else { return nil }
+        let payload = String(source[source.index(after: comma)...])
+        return Data(base64Encoded: payload.removingPercentEncoding ?? payload, options: .ignoreUnknownCharacters)
     }
 
     private static let fixedLengthPattern = try! NSRegularExpression(
