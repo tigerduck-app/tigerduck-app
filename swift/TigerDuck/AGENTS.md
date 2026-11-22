@@ -68,7 +68,8 @@ Each rule below has one home; call it instead of writing the rule again.
 - Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
 - Words the Watch, a widget or the Live Activity show in the language chosen in the app:
   `AppLanguage` in TigerDuckCore. The widgets and the Live Activity read it from the App Group
-  (`Persistence/AppLanguageStore.swift`), where `WidgetSnapshotWriter` writes it.
+  (`Persistence/AppLanguageStore.swift`), where `WidgetSnapshotWriter` writes it, and hand it to
+  their views with `.appLanguage(_:)` (`Shared/AppLanguageEnvironment.swift`).
 - Copying text to the pasteboard on iOS and macOS: `Support/Pasteboard.swift`.
 
 ## Anti-patterns

@@ -109,6 +109,7 @@ struct LockScreenView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .appLanguage(language)
     }
 }
 
@@ -134,6 +135,7 @@ private struct ExpandedBottomView: View {
         .padding(.horizontal, 4)
         .padding(.top, 2)
         .padding(.bottom, 4)
+        .appLanguage(language)
     }
 }
 
@@ -275,7 +277,7 @@ private func countdownLabel(_ snapshot: LiveActivitySnapshot, in language: AppLa
     // clock and would otherwise show ~a day off when fake time is set.
     if let target = snapshot.countdownTarget, target > AppClock.now() {
         Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
-            .environment(\.locale, language.locale)
+            .appLanguage(language)
     } else {
         Text(terminalLabel(for: snapshot.scenario, in: language))
     }

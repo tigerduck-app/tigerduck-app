@@ -8,16 +8,6 @@ extension Font {
     }
 }
 
-extension EnvironmentValues {
-    @Entry var appLanguage = AppLanguage(tag: nil)
-}
-
-extension View {
-    func appLanguage(_ language: AppLanguage) -> some View {
-        environment(\.appLanguage, language).environment(\.locale, language.locale)
-    }
-}
-
 extension WidgetFamily {
     var isExtraLargePortrait: Bool {
         #if compiler(>=6.4)

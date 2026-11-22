@@ -30,13 +30,16 @@ struct WidgetAppLanguageTests {
         return AppLanguageStore(defaults: UserDefaults(suiteName: suite)).read()
     }
 
-    private static func showLiveActivity(_ scenario: LiveActivityScenarioKind, in language: AppLanguage) throws -> UIWindow {
+    private static func showLiveActivity(
+        _ scenario: LiveActivityScenarioKind, assessment: Bool = false, in language: AppLanguage
+    ) throws -> UIWindow {
         let now = Date()
-        let snapshot = LiveActivitySnapshot(
+        var snapshot = LiveActivitySnapshot(
             scenario: scenario, title: "資料結構與演算法", subtitle: TimeRange.liveActivitySubtitle("10:20", "12:10"),
             locationText: "TR-412", instructor: "王大明", countdownTarget: now.addingTimeInterval(40 * 60),
             progressStart: now.addingTimeInterval(-10 * 60), accentHex: 0x4ECDC4, deepLink: nil, sourceId: "CS2001"
         )
+        snapshot.assessment = assessment
         let view = LockScreenView(snapshot: snapshot, language: language)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(Color(red: 0.306, green: 0.804, blue: 0.769).opacity(0.12))
@@ -139,6 +142,36 @@ struct WidgetAppLanguageTests {
             #expect(texts.contains(try Self.zhHant("widget_ongoing")), "\(texts)")
             #expect(texts.contains { $0.wholeMatch(of: #/\d+:\d{2}/#) != nil }, "\(texts) shows no timer")
         }
+    }
+
+    @Test func anAssessmentIsReadInTheLanguageChosenInTheApp() async throws {
+        try await withAccessibilityAutomation {
+            let assessment = try Self.zhHant("course_change_assessment")
+            let window = try Self.showLiveActivity(.inClass, assessment: true, in: Self.written("zh-Hant"))
+            defer { window.isHidden = true }
+
+            _ = try await Host.texts(in: window, waitingFor: "資料結構與演算法, \(assessment)")
+        }
+    }
+
+    @Test func withoutATagTheViewsKeepTheLocaleTheyHave() async throws {
+        try await withAccessibilityAutomation {
+            let view = LocaleName()
+                .appLanguage(AppLanguage(tag: nil))
+                .environment(\.locale, Locale(identifier: "ja_JP"))
+            let window = try Host.show(view, size: CGSize(width: 200, height: 60))
+            defer { window.isHidden = true }
+
+            _ = try await Host.texts(in: window, waitingFor: "ja_JP")
+        }
+    }
+}
+
+private struct LocaleName: View {
+    @Environment(\.locale) private var locale
+
+    var body: some View {
+        Text(verbatim: locale.identifier)
     }
 }
 #endif

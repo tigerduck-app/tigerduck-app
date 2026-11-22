@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 /// The dashed underline of a class with an assessment, for the app, the widgets and the Live
 /// Activity alike. The inks are sRGB.
@@ -19,6 +20,8 @@ struct CourseName: View {
     let name: String
     let assessmentInk: Color?
 
+    @Environment(\.appLanguage) private var language
+
     init(_ name: String, assessmentInk: Color?) {
         self.name = name
         self.assessmentInk = assessmentInk
@@ -38,7 +41,7 @@ struct CourseName: View {
                 .mask(AssessmentDashes())
                 .accessibilityHidden(true)
                 Text(name)
-                    .accessibilityLabel(Text(verbatim: "\(name), \(String(localized: "course_change_assessment"))"))
+                    .accessibilityLabel(Text(verbatim: "\(name), \(language.string("course_change_assessment"))"))
             }
         } else {
             Text(name)
