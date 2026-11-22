@@ -785,6 +785,13 @@ struct MailMessageViewModelTests {
         #expect(MailWebViewFactory.document(for: "", allowRemoteImages: true).contains("img-src tdcid: data: https: http:"))
     }
 
+    @Test func theDocumentCannotBePinchedAndCarriesTheTextSize() {
+        let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false, textZoom: 130)
+        #expect(document.contains("maximum-scale=1, user-scalable=no"))
+        #expect(document.contains(#"<div id="mail" style="zoom:130%"><p>x</p></div>"#))
+        #expect(MailWebViewFactory.document(for: "", allowRemoteImages: false).contains("zoom:100%"))
+    }
+
     @Test func theDocumentIsDrawnOnTheAppsPage() {
         let document = MailWebViewFactory.document(for: "<p>x</p>", allowRemoteImages: false)
         #expect(document.contains("background:#000000"))

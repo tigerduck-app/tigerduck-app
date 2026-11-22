@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import SwiftUI
 
 enum MailDeleteConfirmation { case toTrash, permanent }
@@ -23,6 +24,9 @@ struct MailMessageToolbar: ToolbarContent {
         }
         ToolbarItem(placement: .topBarTrailing) {
             Menu {
+                if viewModel.mode != .source {
+                    MailTextSizeControl()
+                }
                 Section {
                     Picker(String(localized: "school_mail_view_mode"), selection: $viewModel.mode) {
                         ForEach(viewModel.availableModes) { mode in
@@ -59,6 +63,31 @@ struct MailMessageToolbar: ToolbarContent {
 
     private func label(_ action: MailRowAction) -> some View {
         Label(action.title(for: viewModel.detail?.summary), systemImage: action.icon(for: viewModel.detail?.summary))
+    }
+}
+
+/// The menu stays open on a tap, so the reader sees the mail change size behind it.
+struct MailTextSizeControl: View {
+    @Default(.mailTextZoom) private var storedZoom
+
+    var body: some View {
+        let zoom = PageZoom.mail.clamped(storedZoom)
+        let percent = PageZoom.text(zoom)
+        ControlGroup {
+            Button(String(localized: "school_mail_text_smaller"), systemImage: "textformat.size.smaller") {
+                PageZoom.mail.smaller(than: zoom).map { storedZoom = $0 }
+            }
+            .disabled(PageZoom.mail.smaller(than: zoom) == nil)
+            // SwiftUI hands a menu item only its title's accessibility label, not the button's label or value.
+            Button { storedZoom = PageZoom.standard } label: {
+                Text(percent).accessibilityLabel(Text(verbatim: "\(String(localized: "school_mail_text_size_reset")), \(percent)"))
+            }
+            Button(String(localized: "school_mail_text_larger"), systemImage: "textformat.size.larger") {
+                PageZoom.mail.larger(than: zoom).map { storedZoom = $0 }
+            }
+            .disabled(PageZoom.mail.larger(than: zoom) == nil)
+        }
+        .menuActionDismissBehavior(.disabled)
     }
 }
 

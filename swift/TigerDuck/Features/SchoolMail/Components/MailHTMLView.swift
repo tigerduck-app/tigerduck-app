@@ -8,6 +8,7 @@ struct MailHTMLView: UIViewRepresentable {
     let inlineImages: [String: MailInlineImage]
     let allowRemoteImages: Bool
     var theme: MailHTMLTheme = .app
+    var textZoom = PageZoom.standard
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
     /// False when a load starts, true once it finishes or fails.
@@ -39,6 +40,7 @@ struct MailHTMLView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.load(into: webView)
+        context.coordinator.applyTextZoom(to: webView)
     }
 
     static func paint(_ webView: WKWebView, with theme: MailHTMLTheme) {
@@ -57,6 +59,7 @@ struct MailHTMLView: UIViewRepresentable {
         private(set) var loadTask: Task<Void, Never>?
         private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
+        private var zoomOnPage = PageZoom.standard
 
         init(parent: MailHTMLView) {
             self.parent = parent
@@ -71,9 +74,9 @@ struct MailHTMLView: UIViewRepresentable {
         /// strong reference the `Task` can capture, which is dropped again as soon as that hop
         /// finishes — the observation itself still holds nothing.
         func observeHeight(of webView: WKWebView) {
-            heightObservation = webView.scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, change in
-                guard let self, let height = change.newValue?.height else { return }
-                Task { @MainActor in self.parent.contentHeight = MailHTMLView.clampedHeight(height) }
+            heightObservation = webView.scrollView.observe(\.contentSize, options: [.new]) { [weak self, weak webView] _, _ in
+                guard let self, let webView else { return }
+                Task { @MainActor in self.fitHeight(of: webView) }
             }
         }
 
@@ -86,8 +89,9 @@ struct MailHTMLView: UIViewRepresentable {
             // Outside the view update this runs in.
             Task { @MainActor [weak self] in self?.parent.onLoadedChange(false) }
             let theme = parent.theme
+            zoomOnPage = parent.textZoom
             let document = MailWebViewFactory.document(for: parent.html, allowRemoteImages: parent.allowRemoteImages,
-                                                       theme: theme)
+                                                       theme: theme, textZoom: zoomOnPage)
             let allowImages = parent.allowRemoteImages
             loadTask?.cancel()
             currentNavigation = nil
@@ -110,15 +114,15 @@ struct MailHTMLView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            finish(navigation)
+            finish(navigation, in: webView)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            finish(navigation)
+            finish(navigation, in: webView)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            finish(navigation)
+            finish(navigation, in: webView)
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -126,10 +130,31 @@ struct MailHTMLView: UIViewRepresentable {
             parent.onLoadedChange(true)
         }
 
-        private func finish(_ navigation: WKNavigation?) {
+        private func finish(_ navigation: WKNavigation?, in webView: WKWebView) {
             guard let navigation, navigation === currentNavigation else { return }
             currentNavigation = nil
             parent.onLoadedChange(true)
+            fitHeight(of: webView)
+        }
+
+        func applyTextZoom(to webView: WKWebView) {
+            guard parent.textZoom != zoomOnPage else { return }
+            fitHeight(of: webView)
+        }
+
+        /// Sets the page's text size and the height to the document's, which a smaller size or
+        /// a shorter page brings down too.
+        func fitHeight(of webView: WKWebView) {
+            let zoom = parent.textZoom
+            zoomOnPage = zoom
+            let generation = loadGeneration
+            Task { @MainActor [weak self] in
+                let height = try? await webView.callAsyncJavaScript(
+                    MailWebViewFactory.zoomAndMeasure, arguments: ["zoom": zoom], in: nil, contentWorld: .defaultClient
+                ) as? Double
+                guard let self, let height, generation == self.loadGeneration else { return }
+                self.parent.contentHeight = MailHTMLView.clampedHeight(height.rounded(.up))
+            }
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {

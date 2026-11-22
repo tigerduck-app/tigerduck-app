@@ -123,6 +123,7 @@ which a school sign-out keeps. School Mail's keys live in `MailSettingsStore` an
 | defaults | `libraryStoredPasswordRefusals` | library | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `library` |
 | defaults | `libraryStoredPasswordRefusedAt` | library | `swift/TigerDuck/Account/StoredPasswordLockoutBackoff.swift` `library` |
 | defaults | `macConfiguredTabsData` | device |  |
+| defaults | `mailTextZoom` | device |  |
 | defaults | `moodleOpenTarget` | device |  |
 | defaults | `notificationSettingsPushPending` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSyncer.swift` `cancelPushes` |
 | defaults | `notificationSettingsPushSendsEveryField` | school | `swift/TigerDuck/Backend/Sync/NotificationSettingsSync.swift` `forget` |

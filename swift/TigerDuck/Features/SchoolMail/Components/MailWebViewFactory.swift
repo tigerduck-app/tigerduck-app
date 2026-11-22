@@ -89,17 +89,33 @@ enum MailWebViewFactory {
         if let list { controller.add(list) }
     }
 
-    static func document(for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app) -> String {
+    /// The element the text size scales. The sanitizer keeps no `id` of the sender's.
+    static let zoomedElementID = "mail"
+
+    /// CSS `zoom` reflows the text to the page's width, where `WKWebView.pageZoom` on iOS only
+    /// magnifies it past the edge, as `BrowserPageScripts.zoom` notes.
+    static func document(
+        for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app, textZoom: Int = PageZoom.standard
+    ) -> String {
         let imageSources = allowRemoteImages ? "tdcid: data: https: http:" : "tdcid: data:"
         let scheme = theme.isDark ? "dark" : "light"
         return """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \(imageSources); style-src 'unsafe-inline'">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
         <style>:root{color-scheme:\(scheme);}html,body{margin:0;padding:12px;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
-        </head><body>\(bodyHTML)</body></html>
+        </head><body><div id="\(zoomedElementID)" style="zoom:\(textZoom)%">\(bodyHTML)</div></body></html>
         """
     }
+
+    /// Run in the app's own content world, which `allowsContentJavaScript` does not turn off. The
+    /// root element's box is the document's height; the scroll view's content never shrinks
+    /// below the web view's frame.
+    static let zoomAndMeasure = """
+        const zoomed = document.getElementById("\(zoomedElementID)");
+        if (zoomed) zoomed.style.zoom = zoom + "%";
+        return document.documentElement.getBoundingClientRect().height;
+        """
 }
 
 final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {

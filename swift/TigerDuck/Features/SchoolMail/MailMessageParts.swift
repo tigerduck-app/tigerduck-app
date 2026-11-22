@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import SwiftUI
 import UIKit
 
@@ -105,6 +106,10 @@ struct MailMessageContentView: View {
     @Binding var webHeight: CGFloat
     @Binding var webLoaded: Bool
     @Binding var pendingLinkTarget: MailLinkTarget?
+    @Default(.mailTextZoom) private var storedZoom
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
+
+    private var textZoom: Int { PageZoom.mail.clamped(storedZoom) }
 
     var body: some View {
         if viewModel.detail == nil {
@@ -126,6 +131,7 @@ struct MailMessageContentView: View {
                         inlineImages: viewModel.detail?.inlineImages ?? [:],
                         allowRemoteImages: viewModel.allowRemoteImages,
                         theme: viewModel.htmlTheme,
+                        textZoom: textZoom,
                         contentHeight: $webHeight,
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
@@ -171,7 +177,7 @@ struct MailMessageContentView: View {
 
     private var plainBody: some View {
         Text(viewModel.linkedPlainText)
-            .font(TigerDuckTheme.Typography.body)
+            .font(.system(size: bodySize * CGFloat(textZoom) / 100))
             .foregroundStyle(Color.textPrimary)
             .textSelection(.enabled)
     }
