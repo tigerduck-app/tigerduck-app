@@ -216,6 +216,8 @@ def launch_phone_app(udid: str, clock: str) -> None:
 
 
 def main() -> int:
+    # Each line as it comes, also when a CI log or a file takes the output.
+    sys.stdout.reconfigure(line_buffering=True)
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--device", action="append", choices=[d.slug for d in DEVICES], help="default: every device")
     parser.add_argument("--language", action="append", choices=list(LANGUAGES), help="default: both")
