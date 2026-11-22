@@ -73,6 +73,7 @@ struct NextClassWidgetView: View {
             )
             .widgetURL(URL(string: "tigerduck://classtable"))
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .appLanguage(AppLanguageStore().read())
     }
 }
 

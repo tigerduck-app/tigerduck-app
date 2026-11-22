@@ -39,6 +39,8 @@ nonisolated final class WidgetSnapshotStore {
         self.decoder = dec
     }
 
+    var language: AppLanguageStore { AppLanguageStore(defaults: defaults) }
+
     func readSnapshot() -> WidgetSnapshot? {
         guard let data = defaults.data(forKey: WidgetSnapshot.storeKey) else { return nil }
         do {

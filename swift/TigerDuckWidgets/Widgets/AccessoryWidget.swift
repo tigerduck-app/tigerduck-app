@@ -64,6 +64,7 @@ struct AccessoryWidgetView: View {
         .widgetAccentable(true)
         .containerBackground(.clear, for: .widget)
         .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+        .appLanguage(AppLanguageStore().read())
     }
 }
 

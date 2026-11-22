@@ -1,0 +1,96 @@
+#if os(iOS)
+import SwiftUI
+import Testing
+import TigerDuckCore
+import UIKit
+import WidgetKit
+@testable import TigerDuck
+
+/// The test host runs in English (`-testLanguage en`), so Chinese words on screen can only come from
+/// the tag the app wrote to the App Group.
+@MainActor
+@Suite(.serialized)
+struct WidgetAppLanguageTests {
+    private typealias Fixtures = WidgetFixtures
+    private typealias Host = WidgetLayoutTests.Host
+
+    private static let zh = Locale(identifier: "zh-Hant")
+
+    private static func zhHant(_ key: String) throws -> String {
+        let path = try #require(Bundle.main.path(forResource: "zh-Hant", ofType: "lproj"))
+        let value = try #require(Bundle(path: path)).localizedString(forKey: key, value: nil, table: nil)
+        #expect(value != String(localized: String.LocalizationValue(key)), "\(key) reads the same in the test host's language")
+        return value
+    }
+
+    private static func written(_ tag: String?) -> AppLanguage {
+        let suite = "WidgetAppLanguageTests.\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        WidgetSnapshotStore(appGroupIdentifier: suite).language.write(AppLanguage(tag: tag))
+        return AppLanguageStore(defaults: UserDefaults(suiteName: suite)).read()
+    }
+
+    private static func showNextClass(_ family: WidgetFamily, at now: Date, in language: AppLanguage) throws -> UIWindow {
+        let snapshot = Fixtures.snapshot()
+        let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
+        let upNext = WidgetTimelineDerivation.upNext(snapshot: snapshot, at: now, after: derived)
+        let palette = Host.palette()
+        let view = NextClassView(derived: derived, upNext: upNext, palette: palette, family: family, clock: now)
+            .appLanguage(language)
+        let size = family == .systemSmall ? CGSize(width: 155, height: 155) : CGSize(width: 329, height: 155)
+        return try Host.show(view, size: size, background: palette.canvas, margins: family == .systemSmall ? 14 : 11)
+    }
+
+    @Test func aWidgetShowsTheLanguageChosenInTheApp() async throws {
+        try await withAccessibilityAutomation {
+            let window = try Self.showNextClass(.systemSmall, at: Fixtures.wednesday(12, 40), in: Self.written("zh-Hant"))
+            defer { window.isHidden = true }
+
+            let texts = try await Host.texts(in: window, waitingFor: try Self.zhHant("widget_next_class"))
+
+            #expect(!texts.contains { $0.contains(String(localized: "widget_next_class")) }, "\(texts)")
+        }
+    }
+
+    @Test func withoutATagAWidgetShowsTheSystemsLanguage() async throws {
+        try await withAccessibilityAutomation {
+            let window = try Self.showNextClass(.systemSmall, at: Fixtures.wednesday(12, 40), in: Self.written(nil))
+            defer { window.isHidden = true }
+
+            _ = try await Host.texts(in: window, waitingFor: String(localized: "widget_next_class"))
+        }
+    }
+
+    @Test func theCountdownToTheNextClassIsWrittenInTheLanguageChosenInTheApp() async throws {
+        try await withAccessibilityAutomation {
+            let now = Fixtures.wednesday(12, 40)
+            let countdown = SystemFormatStyle.DateReference(to: Fixtures.wednesday(13, 20))
+            let zh = String(countdown.locale(Self.zh).format(now).characters)
+            #expect(zh != String(countdown.locale(Locale(identifier: "en")).format(now).characters))
+            let window = try Self.showNextClass(.systemMedium, at: now, in: Self.written("zh-Hant"))
+            defer { window.isHidden = true }
+
+            _ = try await Host.texts(in: window, waitingFor: zh)
+            window.saveSnapshot(as: "widget-app-language-next-class-medium-zh-Hant")
+        }
+    }
+
+    @Test func swiftUIsOwnLookupsAndTimersFollowTheLanguageTheWidgetsAreGiven() async throws {
+        try await withAccessibilityAutomation {
+            let view = VStack {
+                Text("widget_tomorrow")
+                Text(LocalizedStringResource("widget_ongoing"))
+                Text(timerInterval: Date()...Date().addingTimeInterval(40 * 60), countsDown: true)
+            }
+            .appLanguage(AppLanguage(tag: "zh-Hant"))
+            let window = try Host.show(view, size: CGSize(width: 200, height: 120))
+            defer { window.isHidden = true }
+
+            let texts = try await Host.texts(in: window, waitingFor: try Self.zhHant("widget_tomorrow"))
+
+            #expect(texts.contains(try Self.zhHant("widget_ongoing")), "\(texts)")
+            #expect(texts.contains { $0.wholeMatch(of: #/\d+:\d{2}/#) != nil }, "\(texts) shows no timer")
+        }
+    }
+}
+#endif

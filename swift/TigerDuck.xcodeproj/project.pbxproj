@@ -210,6 +210,7 @@
 			membershipExceptions = (
 				Devices/Widgets/OpenLibraryPassIntent.swift,
 				Devices/Widgets/WidgetSnapshot.swift,
+				Persistence/AppLanguageStore.swift,
 				Persistence/AppUserDefaults.swift,
 				Shared/AssessmentMark.swift,
 				Shared/ClassTableLayout.swift,
@@ -1349,6 +1350,7 @@
 					AppEnvironment.swift,
 					AppFeature.swift,
 					AppIcon.swift,
+					AppLanguageStore.swift,
 					AppLogger.swift,
 					AppModelStore.swift,
 					AppPreferences.swift,
@@ -1942,6 +1944,7 @@
 					AppEnvironment.swift,
 					AppFeature.swift,
 					AppIcon.swift,
+					AppLanguageStore.swift,
 					AppLogger.swift,
 					AppModelStore.swift,
 					AppPreferences.swift,

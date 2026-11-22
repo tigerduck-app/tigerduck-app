@@ -11,6 +11,7 @@ struct DeviceSurfaceSyncerTests {
         var accent = 0x007AFF
         var deviceAccents = AppPreferences.DeviceAccents()
         var preset = "default"
+        var language = "zh-Hant"
     }
 
     final class Calls {
@@ -34,7 +35,7 @@ struct DeviceSurfaceSyncerTests {
             ),
             fingerprint: { [inputs] unobserved in
                 .init(
-                    data: data, language: "zh", accentHex: inputs.accent, deviceAccents: inputs.deviceAccents,
+                    data: data, language: inputs.language, accentHex: inputs.accent, deviceAccents: inputs.deviceAccents,
                     visualPreset: inputs.preset, signedIn: true, unobserved: unobserved
                 )
             },
@@ -97,6 +98,19 @@ struct DeviceSurfaceSyncerTests {
         await sleeper.fire()
 
         try await waitUntil { calls.widgets == [true] }
+        withExtendedLifetime(syncer) {}
+    }
+
+    @Test("a new app language reloads the widgets and refreshes the Live Activity")
+    func anAppLanguageChangeForcesAWidgetReload() async throws {
+        let syncer = makeSyncer()
+
+        inputs.language = LanguageManager.system
+        try await sleeper.waitUntilArmed()
+        await sleeper.fire()
+
+        try await waitUntil { calls.liveActivity == 1 }
+        #expect(calls.widgets == [true])
         withExtendedLifetime(syncer) {}
     }
 
