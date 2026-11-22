@@ -1,0 +1,60 @@
+name: App Store screenshots
+
+# A release's App Store screenshots, from the demo account in simulators: a version tag pushed on a
+# commit that is on main runs tools/app_store_screenshots.py, and the run keeps the PNGs as an
+# artifact for 90 days, apart from the public GitHub release. A tag on any other commit skips.
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+jobs:
+  screenshots:
+    # The Xcode and simulators of tests.yaml's jobs; the image's iOS 27.1 runtime has the iPhone Duo.
+    runs-on: xcode-27
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          # Every Apple target's "Generate Localizations" phase runs app-translation's generator.
+          submodules: true
+          # The whole history, so the tagged commit can be found among main's.
+          fetch-depth: 0
+
+      - name: Tagged commit is on main
+        id: main
+        run: |
+          if git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "on_main=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "on_main=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::$GITHUB_REF_NAME is not on main: no screenshots."
+          fi
+
+      - name: Xcode version
+        if: steps.main.outputs.on_main == 'true'
+        run: |
+          xcodebuild -version
+          xcrun simctl list runtimes
+
+      # The runner keeps UTC. Simulators take the Mac's zone, which the Lock Screen and the Live
+      # Activity show.
+      - name: Taipei time
+        if: steps.main.outputs.on_main == 'true'
+        run: sudo systemsetup -settimezone Asia/Taipei > /dev/null
+
+      - name: Screenshots
+        if: steps.main.outputs.on_main == 'true'
+        run: python3 tools/app_store_screenshots.py --derived-data "$RUNNER_TEMP/DerivedData"
+
+      # Also after a failure: the shots taken and each failed test's accessibility tree and log.
+      - name: Keep the screenshots
+        if: ${{ !cancelled() && steps.main.outputs.on_main == 'true' }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
+        with:
+          name: app-store-screenshots-${{ github.ref_name }}
+          path: screenshots
+          retention-days: 90
