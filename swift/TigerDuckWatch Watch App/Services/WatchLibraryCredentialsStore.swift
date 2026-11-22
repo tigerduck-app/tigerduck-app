@@ -17,6 +17,7 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         static let password = "watch_library_password"
         static let token = "watch_library_token"
         static let tokenExpiryMs = "watch_library_token_expiry_ms"
+        static let code = "watch_library_code"
     }
 
     enum DefaultsKey {
@@ -48,7 +49,10 @@ final class WatchLibraryCredentialsStore: ObservableObject {
                 return .malformed
             }
             clearToken()
-            guard WatchKeychain.set(u, forKey: Keys.username),
+            let codeKept = payload.code.map { WatchKeychain.set($0, forKey: Keys.code) }
+                ?? WatchKeychain.remove(forKey: Keys.code)
+            guard codeKept,
+                  WatchKeychain.set(u, forKey: Keys.username),
                   WatchKeychain.set(p, forKey: Keys.password) else {
                 return .malformed
             }
@@ -125,6 +129,12 @@ final class WatchLibraryCredentialsStore: ObservableObject {
         WatchKeychain.string(forKey: Keys.username)
     }
 
+    /// The code the phone sent with the credential, while the credential lasts.
+    func fixedCode() -> String? {
+        guard loadCredentialsRespectingTTL() != nil else { return nil }
+        return WatchKeychain.string(forKey: Keys.code)
+    }
+
     func wipe() {
         wipeKeychainOnly()
         clearToken()
@@ -137,7 +147,8 @@ final class WatchLibraryCredentialsStore: ObservableObject {
     private func wipeKeychainOnly() -> Bool {
         let u = WatchKeychain.remove(forKey: Keys.username)
         let p = WatchKeychain.remove(forKey: Keys.password)
-        return u && p
+        let c = WatchKeychain.remove(forKey: Keys.code)
+        return u && p && c
     }
 
     #if DEBUG

@@ -119,6 +119,7 @@ final class LibraryQRViewModel {
     }
 
     private func fetchPayload() async throws -> (payload: String, remaining: Int) {
+        if let code = store.fixedCode() { return (code, LibraryQRCache.lifetime) }
         let phoneReachable = WCSession.isSupported() && WCSession.default.isReachable
         var phoneError: Error?
         if phoneReachable {
