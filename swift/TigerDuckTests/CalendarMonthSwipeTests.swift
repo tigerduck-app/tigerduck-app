@@ -37,13 +37,17 @@ struct CalendarMonthPageTests {
         #expect(CalendarViewModel.monthPage(of: Self.month(2100, 1)) == last)
     }
 
-    @Test func todayShowsTheCurrentMonth() {
-        let model = CalendarViewModel()
+    @Test func theCalendarOpensOnAndReturnsToTheClocksDay() {
+        let today = Self.month(2031, 3, day: 15)
+        let model = CalendarViewModel(now: { today })
+        #expect(model.selectedDate == today)
+        #expect(model.displayedMonth == today)
+        #expect(model.calendarDays == CalendarViewModel.buildCalendarDays(for: today))
+        model.selectedDate = Self.month(2030, 6, day: 2)
         model.displayedMonth = Self.month(2030, 6)
         model.goToToday()
-        let now = TaipeiTime.calendar.dateComponents([.year, .month], from: .now)
-        #expect(CalendarViewModel.month(atPage: CalendarViewModel.monthPage(of: model.displayedMonth))
-            == Self.month(now.year!, now.month!))
+        #expect(model.selectedDate == today)
+        #expect(model.displayedMonth == today)
     }
 }
 

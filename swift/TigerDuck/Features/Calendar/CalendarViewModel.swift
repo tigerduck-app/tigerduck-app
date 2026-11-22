@@ -5,23 +5,29 @@ import TigerDuckCore
 @Observable
 final class CalendarViewModel {
     var events: [AssignmentStore.CalendarEvent] = []
-    var selectedDate: Date = .now
-    var displayedMonth: Date = .now {
+    var selectedDate: Date
+    var displayedMonth: Date {
         didSet { calendarDays = Self.buildCalendarDays(for: displayedMonth) }
     }
 
-    private(set) var calendarDays: [Date?] = CalendarViewModel.buildCalendarDays(for: .now)
+    private(set) var calendarDays: [Date?]
 
     @ObservationIgnored private var storeObservation: StoreObservation?
     @ObservationIgnored private let assignmentStore: AssignmentStore
     @ObservationIgnored private let courseStore: CourseStore
+    @ObservationIgnored private let now: () -> Date
 
     private var eventsByDay: [DateComponents: [AssignmentStore.CalendarEvent]] = [:]
     private var assignmentsByEventId: [String: AssignmentStore.Assignment] = [:]
 
-    init(assignments: AssignmentStore = .shared, courses: CourseStore = .shared) {
+    init(assignments: AssignmentStore = .shared, courses: CourseStore = .shared, now: @escaping () -> Date = AppClock.now) {
         assignmentStore = assignments
         courseStore = courses
+        self.now = now
+        let today = now()
+        selectedDate = today
+        displayedMonth = today
+        calendarDays = Self.buildCalendarDays(for: today)
     }
 
     func assignment(for event: AssignmentStore.CalendarEvent) -> AssignmentStore.Assignment? {
@@ -47,8 +53,9 @@ final class CalendarViewModel {
     }
 
     func goToToday() {
-        selectedDate = .now
-        displayedMonth = .now
+        let today = now()
+        selectedDate = today
+        displayedMonth = today
     }
 
     static let pagedYears = 1900..<2100
