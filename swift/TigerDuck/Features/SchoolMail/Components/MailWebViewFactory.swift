@@ -120,6 +120,14 @@ enum MailWebViewFactory {
         if (zoomed) zoomed.style.zoom = zoom + "%";
         return document.documentElement.getBoundingClientRect().height;
         """
+
+    /// The address of the image at page point (`x`, `y`), unless a link holds it: a tap there is
+    /// the link's.
+    static let imageAtPoint = """
+        const image = document.elementFromPoint(x - scrollX, y - scrollY);
+        if (!image || image.tagName !== "IMG" || image.closest("a[href]")) return null;
+        return image.currentSrc || image.src || null;
+        """
 }
 
 final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {
@@ -134,9 +142,7 @@ final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.badURL))
             return
         }
-        let raw = String(url.absoluteString.dropFirst("\(MailHTMLSanitizer.cidScheme):".count))
-        let cid = raw.removingPercentEncoding ?? raw
-        guard let image = images[cid] else {
+        guard let cid = MailHTMLSanitizer.contentID(ofCIDAddress: url.absoluteString), let image = images[cid] else {
             task.didFailWithError(URLError(.fileDoesNotExist))
             return
         }

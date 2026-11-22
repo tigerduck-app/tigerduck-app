@@ -106,6 +106,7 @@ struct MailMessageContentView: View {
     @Binding var webHeight: CGFloat
     @Binding var webLoaded: Bool
     @Binding var pendingLinkTarget: MailLinkTarget?
+    let onImageTap: (String) -> Void
     @Default(.mailTextZoom) private var storedZoom
     @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
 
@@ -136,7 +137,8 @@ struct MailMessageContentView: View {
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
                         },
-                        onLoadedChange: { webLoaded = $0 }
+                        onLoadedChange: { webLoaded = $0 },
+                        onImageTap: onImageTap
                     )
                     .frame(height: webHeight)
                     .padding(.horizontal, -MailMessageView.sideInset)

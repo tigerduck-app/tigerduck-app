@@ -136,7 +136,7 @@ struct MailMessageView: View {
                 Divider().background(Color.textSecondary)
             }
             MailMessageContentView(viewModel: viewModel, webHeight: $webHeight, webLoaded: $webLoaded,
-                                   pendingLinkTarget: $pendingLinkTarget)
+                                   pendingLinkTarget: $pendingLinkTarget, onImageTap: previewImage)
             if !showsSource, let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
                 MailAttachmentList(parts: attachments, downloading: viewModel.downloading, isRisky: viewModel.isRisky,
                                    onOpen: open, onShare: share)
@@ -159,6 +159,10 @@ struct MailMessageView: View {
             return
         }
         Task { previewURL = await viewModel.prepareAttachment(part) }
+    }
+
+    private func previewImage(_ source: String) {
+        Task { if let url = await viewModel.prepareImage(source) { previewURL = url } }
     }
 
     private func share(_ part: MailBodyPart) {

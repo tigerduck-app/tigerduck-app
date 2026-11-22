@@ -92,9 +92,7 @@ final class MoodleMemberPictures {
     }
 
     private nonisolated static func fileExtension(of data: Data) -> String? {
-        guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let type = CGImageSourceGetType(source).flatMap({ UTType($0 as String) }) else { return nil }
-        return type.preferredFilenameExtension
+        data.imageType?.preferredFilenameExtension
     }
 
     private func readInTurn(_ file: URL) async -> CGImage? {

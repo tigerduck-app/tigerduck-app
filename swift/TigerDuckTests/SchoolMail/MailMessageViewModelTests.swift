@@ -625,6 +625,22 @@ struct MailMessageViewModelTests {
         #expect(await h.fake.attachmentPins == [1])
     }
 
+    @Test func aTappedInlineImageIsWrittenToATemporaryFileUnderItsName() async throws {
+        var message = FakeMailClient.message(uid: 5, html: #"<p><img src="cid:logo@x"></p>"#)
+        message.detail?.inlineImages = ["logo@x": MailInlineImage(mimeType: "image/png", data: MailBodyImageTests.png)]
+        message.detail?.parts = [MailBodyPart(section: "2", contentType: "image/png", charset: nil, transferEncoding: "base64",
+                                              filename: "校徽.png", contentID: "logo@x", size: 3, isAttachment: false)]
+        let h = Self.harness(message)
+        await h.model.load()
+        let url = try #require(await h.model.prepareImage("tdcid:logo@x"))
+        #expect(url.lastPathComponent == "校徽.png")
+        #expect(try Data(contentsOf: url) == MailBodyImageTests.png)
+        #expect(h.model.downloading.isEmpty)
+        #expect(await h.model.prepareImage("tdcid:missing") == nil)
+        h.model.activity.downloading.insert(MailMessageActions.downloadKey(ofImage: "tdcid:logo@x"))
+        #expect(await h.model.prepareImage("tdcid:logo@x") == nil)
+    }
+
     @Test func aRepeatTapDuringAnAttachmentDownloadIsIgnored() async {
         let part = MailBodyPart(section: "2", contentType: "application/pdf", charset: nil, transferEncoding: "base64",
                                 filename: "課程.pdf", contentID: nil, size: 4, isAttachment: true)

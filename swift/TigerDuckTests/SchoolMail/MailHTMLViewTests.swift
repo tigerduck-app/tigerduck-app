@@ -11,13 +11,14 @@ struct MailHTMLViewTests {
     @MainActor
     @Observable
     final class Page {
+        var html = MailHTMLViewTests.paragraph
         var zoom = PageZoom.standard
         var height: CGFloat = 1
         var tappedLinks: [Int] = []
+        var tappedImages: [String] = []
     }
 
     struct Host: View {
-        let html: String
         var linkCount = 0
         var theme = MailHTMLTheme.app
         @Bindable var page: Page
@@ -25,9 +26,9 @@ struct MailHTMLViewTests {
         var body: some View {
             ScrollView {
                 MailHTMLView(
-                    html: html, linkCount: linkCount, inlineImages: [:], allowRemoteImages: false, theme: theme,
+                    html: page.html, linkCount: linkCount, inlineImages: [:], allowRemoteImages: false, theme: theme,
                     textZoom: page.zoom, contentHeight: $page.height,
-                    onLinkTap: { page.tappedLinks.append($0) }
+                    onLinkTap: { page.tappedLinks.append($0) }, onImageTap: { page.tappedImages.append($0) }
                 )
                 .frame(height: page.height)
             }
@@ -64,7 +65,7 @@ struct MailHTMLViewTests {
     @Test("the text size reflows the page within its width, and the height follows it up and down")
     func textSizeReflowsAndTheHeightFollows() async throws {
         let page = Page()
-        let window = try Self.show(Host(html: Self.paragraph, page: page))
+        let window = try Self.show(Host(page: page))
         defer { window.isHidden = true }
         try await waitUntil { page.height > 100 }
         let standard = try await Self.settledHeight(of: page)
@@ -77,12 +78,78 @@ struct MailHTMLViewTests {
 
         page.zoom = 50
         try await waitUntil { page.height < standard * 0.7 }
+        #expect(try await Self.settledHeight(of: page) < standard * 0.7)
+    }
+
+    @Test("a shorter page in the same web view brings the height down")
+    func aShorterPageBringsTheHeightDown() async throws {
+        let page = Page()
+        page.html = Self.paragraph + Self.paragraph
+        let window = try Self.show(Host(page: page))
+        defer { window.isHidden = true }
+        try await waitUntil { page.height > 100 }
+        let long = try await Self.settledHeight(of: page)
+
+        page.html = "<p>短</p>"
+        try await waitUntil { page.height < long / 4 }
+        #expect(try await Self.settledHeight(of: page) < long / 4)
+    }
+
+    static let png: String = {
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        let data = UIGraphicsImageRenderer(size: CGSize(width: 120, height: 80), format: format).pngData { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 120, height: 80))
+        }
+        return "data:image/png;base64,\(data.base64EncodedString())"
+    }()
+
+    /// Taps again while `done` does not hold: on iOS 26.5 a new window's first touch can go nowhere.
+    static func tap(at point: CGPoint, in window: UIWindow, until done: () -> Bool) async throws {
+        for _ in 0..<5 where !done() {
+            window.makeKeyAndVisible()
+            try await fingerTap(at: point, in: window)
+            if try await PageMenuScreenTests.holds(within: .seconds(3), done) { return }
+        }
+        try await waitUntil(done)
+    }
+
+    static func imageCenter(_ index: Int, of web: WKWebView, in window: UIWindow) async throws -> CGPoint {
+        let probe = "const r = document.images[\(index)].getBoundingClientRect(); return [r.x + r.width / 2, r.y + r.height / 2];"
+        let point = try #require(
+            try await web.callAsyncJavaScript(probe, in: nil, contentWorld: .defaultClient) as? [Double]
+        )
+        return web.convert(CGPoint(x: point[0], y: point[1]), to: window)
+    }
+
+    @Test("a tap on an image opens it, and a tap on an image inside a link stays the link's")
+    func anImageTapIsTheImagesUnlessALinkHoldsIt() async throws {
+        let html = Self.paragraph + "<p><img src=\"\(Self.png)\" width=\"120\" height=\"80\"></p>"
+            + "<p><a href=\"https://link.invalid/0\"><img src=\"\(Self.png)\" width=\"120\" height=\"80\"></a></p>"
+        let page = Page()
+        page.html = html
+        let window = try Self.show(Host(linkCount: 1, page: page), height: 1600)
+        defer { window.isHidden = true }
+        try await waitUntil { page.height > 300 }
+        _ = try await Self.settledHeight(of: page)
+        let web = try #require(Self.webView(in: window))
+
+        #expect(await MailHTMLView.Coordinator.imageSource(at: CGPoint(x: 40, y: 40), in: web) == nil)
+        try await fingerTap(at: web.convert(CGPoint(x: 40, y: 40), to: window), in: window)
+
+        try await Self.tap(at: try await Self.imageCenter(0, of: web, in: window), in: window) { !page.tappedImages.isEmpty }
+        #expect(page.tappedImages == [Self.png])
+
+        try await Self.tap(at: try await Self.imageCenter(1, of: web, in: window), in: window) { !page.tappedLinks.isEmpty }
+        #expect(page.tappedLinks == [0])
+        #expect(page.tappedImages == [Self.png])
     }
 
     @Test("pinching the mail does not zoom it")
     func pinchZoomIsOff() async throws {
         let page = Page()
-        let window = try Self.show(Host(html: Self.paragraph, page: page))
+        let window = try Self.show(Host(page: page))
         defer { window.isHidden = true }
         try await waitUntil { page.height > 100 }
         _ = try await Self.settledHeight(of: page)

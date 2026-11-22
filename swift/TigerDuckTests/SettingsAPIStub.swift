@@ -13,6 +13,8 @@ nonisolated final class SettingsAPIStub: URLProtocol {
         var gate: ReplyGate?
         /// Where the answer says it came from, as after a redirect; the request's URL when nil.
         var url: URL?
+        /// Holds the body past its first `sniffedBytes`, after the status and headers, until it opens.
+        var bodyGate: ReplyGate?
 
         static var noReply: StubResponse {
             StubResponse(statusCode: 0, body: Data(), failure: .networkConnectionLost)
@@ -129,13 +131,18 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             reply(next, for: url)
             return
         }
-        // A protocol's client takes its calls on the thread that called `startLoading()`, so the
-        // held reply goes back to that thread's run loop.
+        hold(until: gate) { $0.reply(next, for: url) }
+    }
+
+    // A protocol's client takes its calls on the thread that called `startLoading()`, so a held
+    // step goes back to that thread's run loop.
+    private func hold(until gate: ReplyGate, then step: @escaping @Sendable (SettingsAPIStub) -> Void) {
         let held = HeldReply(stub: self, runLoop: CFRunLoopGetCurrent())
         DispatchQueue.global().async {
             guard gate.wait() else { return }
             CFRunLoopPerformBlock(held.runLoop, CFRunLoopMode.defaultMode.rawValue) {
-                held.stub.reply(next, for: url)
+                guard !held.stub.stopped else { return }
+                step(held.stub)
             }
             CFRunLoopWakeUp(held.runLoop)
         }
@@ -156,9 +163,21 @@ nonisolated final class SettingsAPIStub: URLProtocol {
             headerFields: ["Content-Type": "application/json"].merging(next.headerFields) { $1 }
         )!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: next.body)
+        guard let bodyGate = next.bodyGate else { return sendBody(next.body) }
+        client?.urlProtocol(self, didLoad: next.body.prefix(Self.sniffedBytes))
+        hold(until: bodyGate) { $0.sendBody(next.body.dropFirst(Self.sniffedBytes)) }
+    }
+
+    /// URLSession holds an image's status and headers back until the first bytes of its body arrive.
+    static let sniffedBytes = 512
+
+    private func sendBody(_ body: Data) {
+        client?.urlProtocol(self, didLoad: body)
         client?.urlProtocolDidFinishLoading(self)
     }
 
-    override func stopLoading() {}
+    // Only the loading thread, through its run loop, reads and writes it.
+    private var stopped = false
+
+    override func stopLoading() { stopped = true }
 }

@@ -217,6 +217,10 @@ final class MailMessageViewModel: Identifiable {
         await MailMessageActions.prepareAttachment(part, model: self)
     }
 
+    func prepareImage(_ source: String) async -> URL? {
+        await MailMessageActions.prepareImage(source, model: self)
+    }
+
     func isRisky(_ part: MailBodyPart) -> Bool {
         let context = (detail?.summary.subject ?? "") + "\n" + plainText
         if MailAttachmentRisk.attachmentRisk(filename: part.filename ?? "", contentType: part.contentType,
