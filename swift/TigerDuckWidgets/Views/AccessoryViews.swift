@@ -9,19 +9,21 @@ private func roomAndName(_ room: String, _ name: String) -> String {
 
 struct AccessoryInlineView: View {
     let derived: WidgetDerivedState
+    @Environment(\.appLanguage) private var language
 
     var body: some View {
         switch derived {
         case .signInRequired:
-            Text(String(localized: "widget_sign_in"))
+            Text(language.string("widget_sign_in"))
         case .ongoing(let infos):
             Text(roomAndName(infos[0].classroom, infos[0].course.displayName))
         case .nextToday(let info):
             Text("\(info.startTime) \(roomAndName(info.classroom, info.course.displayName))")
         case .tomorrowFirst(let info):
-            Text(info.day.inlineCaption("\(info.startTime) \(roomAndName(info.classroom, info.course.displayName))"))
+            let start = "\(info.startTime) \(roomAndName(info.classroom, info.course.displayName))"
+            Text(info.day.inlineCaption(start, in: language))
         case .noMoreClasses:
-            Text(String(localized: "widget_no_more_classes"))
+            Text(language.string("widget_no_more_classes"))
         }
     }
 }
@@ -62,6 +64,7 @@ struct AccessoryCircularView: View {
 
 struct AccessoryRectangularView: View {
     let derived: WidgetDerivedState
+    @Environment(\.appLanguage) private var language
 
     /// The Lock Screen draws accessory widgets in its vibrant mode, by luminance, so the underline takes the
     /// light ink of a dark background.
@@ -72,7 +75,7 @@ struct AccessoryRectangularView: View {
     var body: some View {
         switch derived {
         case .signInRequired:
-            Text(String(localized: "widget_sign_in"))
+            Text(language.string("widget_sign_in"))
         case .ongoing(let infos):
             let info = infos[0]
             VStack(alignment: .leading, spacing: 2) {
@@ -90,7 +93,7 @@ struct AccessoryRectangularView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         case .nextToday(let info), .tomorrowFirst(let info):
             VStack(alignment: .leading, spacing: 1) {
-                Text(info.day.headline())
+                Text(info.day.headline(todayKey: "widget_next_class", in: language))
                     .font(.caption2.weight(.bold))
                 CourseName(info.course.displayName, assessmentInk: Self.assessmentInk(for: info.change))
                     .font(.caption.weight(.semibold))
@@ -106,7 +109,7 @@ struct AccessoryRectangularView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         case .noMoreClasses:
-            Text(String(localized: "widget_no_more_classes"))
+            Text(language.string("widget_no_more_classes"))
                 .font(.caption)
         }
     }

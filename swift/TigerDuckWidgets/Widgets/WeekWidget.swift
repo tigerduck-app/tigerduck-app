@@ -59,6 +59,7 @@ struct WeekWidgetView: View {
             .containerBackground(palette.canvas, for: .widget)
             .widgetURL(URL(string: "tigerduck://classtable"))
             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            .appLanguage(AppLanguageStore().read())
     }
 }
 

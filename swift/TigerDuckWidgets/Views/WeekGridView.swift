@@ -12,6 +12,7 @@ struct WeekGridView: View {
 
     @ScaledMetric(relativeTo: .caption2) private var textSize: CGFloat = 11
     @ScaledMetric(relativeTo: .caption2) private var headerHeight: CGFloat = 18
+    @Environment(\.appLanguage) private var language
 
     private var datesBelowWeekdays: Bool { family.isExtraLargePortrait }
     private var size: CGFloat { family == .systemLarge ? textSize : textSize + 1 }
@@ -183,7 +184,7 @@ struct WeekGridView: View {
             .classTile(tile, radius: radius, progress: nil, outline: 0, bottomBar: false)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(WeekCourseBlock.spoken(
-                course: course, classroom: meeting.classroom, change: meeting.change, times: meeting.times
+                course: course, classroom: meeting.classroom, change: meeting.change, times: meeting.times, in: language
             ))
             .padding(.top, top)
             .frame(height: height(of: combinedSpan, cellHeight), alignment: .top)

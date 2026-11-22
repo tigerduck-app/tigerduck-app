@@ -1,10 +1,11 @@
 import Foundation
 
-/// The language chosen in the phone app (`WatchSnapshot.languageTag`), which the Watch app and its
-/// complication show, or the Watch's own before the phone has sent one.
+/// The language chosen in the app's settings, which the Watch, the widgets and the Live Activity
+/// show, or the device's when `tag` is nil. They run in processes of their own, which look keys up
+/// in the device's language whatever the app chose.
 /// `String(localized:locale:)` only formats in its locale and still looks the key up in the
 /// system's language, so `string(_:)` picks the localization from the tag itself.
-public nonisolated struct WatchLanguage: Equatable, Sendable {
+public struct AppLanguage: Equatable, Sendable {
     public let tag: String?
 
     public init(tag: String?) {

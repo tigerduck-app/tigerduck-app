@@ -41,7 +41,7 @@ Each rule below has one home; call it instead of writing the rule again.
 - Course colors: `Stores/CourseColorStore.swift`.
 - The cached Moodle assignments: `AssignmentFetch` in `School/Moodle/`.
 - Settings: a `Defaults` key in `App/AppDefaults.swift`; a raw `UserDefaults` key goes through
-  `Persistence/AppUserDefaults.swift`.
+  `Persistence/AppUserDefaults.swift`, which also names the App Group the extensions share.
 - Term codes: `AcademicTerm` in TigerDuckCore.
 - Today's classes, now and next: `ClassTimeline` in TigerDuckCore.
 - Days without classes, from the terms and holidays: `QuietDayCalendar` in TigerDuckCore.
@@ -66,6 +66,10 @@ Each rule below has one home; call it instead of writing the rule again.
   the app as on each background push, is `App/PushAppDelegate.swift`'s, through
   `DeliveredNotificationCenter`.
 - Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
+- Words the Watch, a widget or the Live Activity show in the language chosen in the app:
+  `AppLanguage` in TigerDuckCore. The widgets and the Live Activity read it from the App Group
+  (`Persistence/AppLanguageStore.swift`), where `WidgetSnapshotWriter` writes it, and hand it to
+  their views with `.appLanguage(_:)` (`Shared/AppLanguageEnvironment.swift`).
 - Copying text to the pasteboard on iOS and macOS: `Support/Pasteboard.swift`.
 
 ## Anti-patterns

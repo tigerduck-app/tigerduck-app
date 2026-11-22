@@ -131,6 +131,7 @@ jobs:
               TigerDuckTests/TLSPinPromptTests
               TigerDuckTests/TodayCourseCardLayoutTests
               TigerDuckTests/UndatedAssignmentRowScreenTests
+              TigerDuckTests/WidgetAppLanguageTests
               TigerDuckTests/WidgetLayoutTests
               TigerDuckTests/WidgetSnapshotPictureTests
           # The watch app is a companion app with its own scheme and destination; Xcode pairs the

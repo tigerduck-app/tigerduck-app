@@ -6,19 +6,20 @@ import WidgetKit
 struct TigerDuckLiveActivityLiveActivity: Widget {
     var body: some WidgetConfiguration {
         ActivityConfiguration(for: TigerDuckActivityAttributes.self) { context in
-            LockScreenView(snapshot: context.state.snapshot)
+            LockScreenView(snapshot: context.state.snapshot, language: AppLanguageStore().read())
                 .activityBackgroundTint(hexColor(context.state.snapshot.accentHex).opacity(0.12))
                 .activitySystemActionForegroundColor(.primary)
                 .widgetURL(context.state.snapshot.deepLink)
         } dynamicIsland: { context in
             let snapshot = context.state.snapshot
+            let language = AppLanguageStore().read()
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     HStack(spacing: 6) {
                         Circle()
                             .fill(accentFill(snapshot))
                             .frame(width: 8, height: 8)
-                        Text(statusLabel(for: snapshot.scenario))
+                        Text(statusLabel(for: snapshot.scenario, in: language))
                             .font(.footnote.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -28,7 +29,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     HStack(spacing: 0) {
                         Spacer(minLength: 0)
-                        countdownLabel(snapshot)
+                        countdownLabel(snapshot, in: language)
                             .font(.footnote.monospacedDigit().bold())
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -37,7 +38,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                     .padding(.trailing, 8)
                 }
                 DynamicIslandExpandedRegion(.bottom) {
-                    ExpandedBottomView(snapshot: snapshot)
+                    ExpandedBottomView(snapshot: snapshot, language: language)
                 }
             } compactLeading: {
                 if let loc = snapshot.locationText, !loc.isEmpty {
@@ -49,7 +50,7 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
                     scenarioIcon(snapshot)
                 }
             } compactTrailing: {
-                countdownLabel(snapshot)
+                countdownLabel(snapshot, in: language)
                     .font(.caption.monospacedDigit().bold())
                     .foregroundStyle(hexColor(snapshot.accentHex))
                     .frame(width: 60, alignment: .leading)
@@ -62,8 +63,9 @@ struct TigerDuckLiveActivityLiveActivity: Widget {
     }
 }
 
-private struct LockScreenView: View {
+struct LockScreenView: View {
     let snapshot: LiveActivitySnapshot
+    let language: AppLanguage
 
     @Environment(\.colorScheme) private var colorScheme
 
@@ -76,14 +78,14 @@ private struct LockScreenView: View {
                     Circle()
                         .fill(accentFill(snapshot))
                         .frame(width: 8, height: 8)
-                    Text(statusLabel(for: snapshot.scenario))
+                    Text(statusLabel(for: snapshot.scenario, in: language))
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.primary)
                 }
 
                 Spacer(minLength: 12)
 
-                countdownLabel(snapshot)
+                countdownLabel(snapshot, in: language)
                     .font(.footnote.monospacedDigit().bold())
                     .foregroundStyle(.primary)
                     .lineLimit(1)
@@ -102,16 +104,18 @@ private struct LockScreenView: View {
 
             AutoProgressBar(snapshot: snapshot)
 
-            MetadataRowView(snapshot: snapshot)
+            MetadataRowView(snapshot: snapshot, language: language)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
         .frame(maxWidth: .infinity, alignment: .leading)
+        .appLanguage(language)
     }
 }
 
 private struct ExpandedBottomView: View {
     let snapshot: LiveActivitySnapshot
+    let language: AppLanguage
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -126,11 +130,12 @@ private struct ExpandedBottomView: View {
 
             AutoProgressBar(snapshot: snapshot)
 
-            MetadataRowView(snapshot: snapshot)
+            MetadataRowView(snapshot: snapshot, language: language)
         }
         .padding(.horizontal, 4)
         .padding(.top, 2)
         .padding(.bottom, 4)
+        .appLanguage(language)
     }
 }
 
@@ -163,6 +168,7 @@ private struct AutoProgressBar: View {
 
 private struct MetadataRowView: View {
     let snapshot: LiveActivitySnapshot
+    let language: AppLanguage
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -227,7 +233,7 @@ private struct MetadataRowView: View {
     private func classTime(_ subtitle: String) -> Text {
         guard let times = TimeRange.times(ofLiveActivitySubtitle: subtitle) else { return Text(subtitle) }
         return Text(TimeRange.text(times.start, times.end))
-            .accessibilityLabel(TimeRange.spoken(times.start, times.end))
+            .accessibilityLabel(TimeRange.spoken(times.start, times.end) { language.string($0) })
     }
 }
 
@@ -256,37 +262,38 @@ private func iconName(for scenario: LiveActivityScenarioKind) -> String {
     }
 }
 
-private func statusLabel(for scenario: LiveActivityScenarioKind) -> String {
+private func statusLabel(for scenario: LiveActivityScenarioKind, in language: AppLanguage) -> String {
     switch scenario {
-    case .inClass: return String(localized: "live_activity_status_in_class_short")
-    case .classPreparing: return String(localized: "live_activity_status_class_preparing")
-    case .assignmentUrgent: return String(localized: "live_activity_status_assignment_short")
+    case .inClass: return language.string("live_activity_status_in_class_short")
+    case .classPreparing: return language.string("live_activity_status_class_preparing")
+    case .assignmentUrgent: return language.string("live_activity_status_assignment_short")
     }
 }
 
 @ViewBuilder
-private func countdownLabel(_ snapshot: LiveActivitySnapshot) -> some View {
+private func countdownLabel(_ snapshot: LiveActivitySnapshot, in language: AppLanguage) -> some View {
     // Compare in app-clock space (fake time aware), but hand SwiftUI a
     // real-time range — `Text(timerInterval:)` ticks against the system
     // clock and would otherwise show ~a day off when fake time is set.
     if let target = snapshot.countdownTarget, target > AppClock.now() {
         Text(timerInterval: Date()...AppClock.realTime(forApp: target), countsDown: true)
+            .appLanguage(language)
     } else {
-        Text(terminalLabel(for: snapshot.scenario))
+        Text(terminalLabel(for: snapshot.scenario, in: language))
     }
 }
 
 /// The activity can outlive its target: an end push is the only remote
 /// removal (ActivityKit has no expire-at-date API, and `staleDate` does not
 /// dismiss; see `LiveActivityCoordinator`), and the local end timer and the
-private func terminalLabel(for scenario: LiveActivityScenarioKind) -> String {
+private func terminalLabel(for scenario: LiveActivityScenarioKind, in language: AppLanguage) -> String {
     switch scenario {
     case .inClass:
-        return String(localized: "live_activity_countdown_done_in_class")
+        return language.string("live_activity_countdown_done_in_class")
     case .classPreparing:
-        return String(localized: "live_activity_countdown_done_class_preparing")
+        return language.string("live_activity_countdown_done_class_preparing")
     case .assignmentUrgent:
-        return String(localized: "live_activity_countdown_done_assignment_urgent")
+        return language.string("live_activity_countdown_done_assignment_urgent")
     }
 }
 

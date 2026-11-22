@@ -87,7 +87,10 @@ struct TigerDuckApp: App {
                 surfaces: .init(
                     widgets: { widgetSnapshotWriter.regenerate(forceReload: $0) },
                     watch: { watchSync.pushCurrentState() },
-                    liveActivity: { app.liveActivity.scheduleRefresh(after: .zero) }
+                    liveActivity: { redraw in
+                        if redraw { Task { await app.liveActivity.coordinator.redrawRunningActivities() } }
+                        app.liveActivity.scheduleRefresh(after: .zero)
+                    }
                 ),
                 fingerprint: { DeviceSurfaceSyncer.fingerprint(of: app, unobserved: $0) }
             )

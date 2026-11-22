@@ -11,6 +11,7 @@ struct WeekHeaderRow: View {
     let periodWidth: CGFloat
     let height: CGFloat
     let spacing: CGFloat
+    @Environment(\.appLanguage) private var language
 
     private var showsDates: Bool { family.isExtraLargePortrait || family == .systemExtraLarge }
 
@@ -25,7 +26,7 @@ struct WeekHeaderRow: View {
                         .foregroundStyle(palette.onSurfaceVariant)
                         .lineLimit(1)
                         .minimumScaleFactor(0.5)
-                        .accessibilityLabel(Text(String(format: String(localized: "a11y_class_table_week"), week)))
+                        .accessibilityLabel(Text(language.format("a11y_class_table_week", week)))
                 } else {
                     Color.clear
                 }
@@ -41,7 +42,8 @@ struct WeekHeaderRow: View {
 
     @ViewBuilder
     private func dayHeader(_ weekday: Int, isToday: Bool) -> some View {
-        let name = Text(WidgetDayHeader.weekdayKey(weekday)).font(.system(size: showsDates ? size + 1 : size, weight: .bold))
+        let name = Text(language.string(WidgetDayHeader.weekdayKey(weekday)))
+            .font(.system(size: showsDates ? size + 1 : size, weight: .bold))
         if showsDates {
             let day = TaipeiTime.calendar.component(.day, from: WeekGridView.day(of: weekday, from: now))
             let marked = Text(String(day))
@@ -83,6 +85,7 @@ struct WeekCourseBlock: View {
     let family: WidgetFamily
     let size: CGFloat
     let radius: CGFloat
+    @Environment(\.appLanguage) private var language
 
     private var isCancelled: Bool { change?.cancelled == true }
 
@@ -112,16 +115,18 @@ struct WeekCourseBlock: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .classTile(tile, radius: radius, progress: progress, outline: 1.5, bottomBar: true)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Self.spoken(course: course, classroom: classroom, change: change, times: times))
+        .accessibilityLabel(Self.spoken(course: course, classroom: classroom, change: change, times: times, in: language))
     }
 
-    static func spoken(course: SnapshotCourse, classroom: String, change: SnapshotCourseChange?, times: PeriodTime?) -> String {
+    static func spoken(
+        course: SnapshotCourse, classroom: String, change: SnapshotCourseChange?, times: PeriodTime?, in language: AppLanguage
+    ) -> String {
         let isCancelled = change?.cancelled == true
         let time = (change?.start ?? times?.start).flatMap { start in
-            (change?.end ?? times?.end).map { TimeRange.spoken(start, $0) }
+            (change?.end ?? times?.end).map { end in TimeRange.spoken(start, end) { language.string($0) } }
         } ?? (isCancelled ? nil : TimeRange.partial(start: change?.start, end: change?.end))
-        let assessment = change?.assessment == true ? String(localized: "course_change_assessment") : nil
-        return [course.displayName, assessment, time, isCancelled ? String(localized: "course_card_cancelled") : classroom]
+        let assessment = change?.assessment == true ? language.string("course_change_assessment") : nil
+        return [course.displayName, assessment, time, isCancelled ? language.string("course_card_cancelled") : classroom]
             .compactMap { $0 }
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
@@ -130,7 +135,7 @@ struct WeekCourseBlock: View {
     private func bottom(tile: WidgetTile) -> some View {
         Group {
             if isCancelled {
-                Text(String(localized: "course_card_cancelled"))
+                Text(language.string("course_card_cancelled"))
                     .font(.system(size: size - 1, weight: .semibold))
                     .foregroundStyle(tile.secondaryInk)
             } else {

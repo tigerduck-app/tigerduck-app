@@ -3,7 +3,7 @@ import TigerDuckCore
 
 struct CourseDetailView: View {
     let course: WatchCourse
-    let language: WatchLanguage
+    let language: AppLanguage
 
     var body: some View {
         ScrollView {

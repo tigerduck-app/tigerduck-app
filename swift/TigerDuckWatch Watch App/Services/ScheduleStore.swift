@@ -3,13 +3,14 @@ import WatchConnectivity
 import WidgetKit
 import Combine
 import os
+import TigerDuckCore
 
 @MainActor
 final class ScheduleStore: NSObject, ObservableObject {
 
     @Published private(set) var snapshot: WatchSnapshot?
 
-    var language: WatchLanguage { WatchLanguage(tag: snapshot?.languageTag) }
+    var language: AppLanguage { AppLanguage(tag: snapshot?.languageTag) }
 
     private let snapshotFileURL: URL
     private let defaults: UserDefaults

@@ -14,7 +14,7 @@ struct LibrarySignInTests {
     }
 
     static var watchEpoch: Int {
-        UserDefaults(suiteName: "group.org.ntust.app.TigerDuck")?.integer(forKey: "watchLibraryCredEpoch") ?? 0
+        UserDefaults(suiteName: AppUserDefaults.appGroupIdentifier)?.integer(forKey: "watchLibraryCredEpoch") ?? 0
     }
 
     static func answer() -> LibraryLoginData {

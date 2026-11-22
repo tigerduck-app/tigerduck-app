@@ -153,7 +153,8 @@ enum MoodleAssignmentDetails {
     }
 
     static func weekdayTimeText(_ date: Date, locale: Locale = .autoupdatingCurrent) -> String {
-        "\(NextClassResolver.Day.later(weekday: date.scheduleWeekday).headline(in: WatchLanguage(tag: nil))) \(formatted(date, template: "HHmm", locale: locale))"
+        let time = formatted(date, template: "HHmm", locale: locale)
+        return ClassDay.later(weekday: date.scheduleWeekday).inlineCaption(time, in: AppLanguage(tag: nil))
     }
 
     static func monthText(_ date: Date, locale: Locale = .autoupdatingCurrent) -> String {

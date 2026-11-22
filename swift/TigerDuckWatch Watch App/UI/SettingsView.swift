@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct SettingsView: View {
     @EnvironmentObject private var store: ScheduleStore

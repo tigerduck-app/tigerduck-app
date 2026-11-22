@@ -9,7 +9,7 @@ final class WidgetSnapshotWriter {
     private let store: WidgetSnapshotStore
     private let coordinator: WidgetReloadCoordinator
     private let isLoggedIn: @MainActor () -> Bool
-    private let accent: @MainActor () -> (hex: Int, gradient: AccentGradient?)
+    private let preferences: @MainActor () -> (accentHex: Int, accentGradient: AccentGradient?, language: AppLanguage)
     private let courseProvider: CanonicalCourseProvider
     private let courses: CourseStore
     private let isProtectedDataAvailable: @MainActor () -> Bool
@@ -29,6 +29,7 @@ final class WidgetSnapshotWriter {
             isLoggedIn: { app.authService.hasStoredCredentials },
             accentColorHex: { app.preferences.accentColorHex },
             accentGradient: { app.preferences.deviceAccents.widgets },
+            language: { LanguageManager.language(of: app.preferences.appLanguage) },
             courses: courses,
             store: store,
             coordinator: coordinator,
@@ -40,6 +41,7 @@ final class WidgetSnapshotWriter {
         isLoggedIn: @escaping @MainActor () -> Bool,
         accentColorHex: @escaping @MainActor () -> Int,
         accentGradient: @escaping @MainActor () -> AccentGradient? = { nil },
+        language: @escaping @MainActor () -> AppLanguage = { AppLanguage(tag: nil) },
         courses: CourseStore? = nil,
         store: WidgetSnapshotStore? = nil,
         coordinator: WidgetReloadCoordinator? = nil,
@@ -56,7 +58,7 @@ final class WidgetSnapshotWriter {
         self.isProtectedDataAvailable = isProtectedDataAvailable ?? { true }
         #endif
         self.isLoggedIn = isLoggedIn
-        self.accent = { (accentColorHex(), accentGradient()) }
+        self.preferences = { (accentColorHex(), accentGradient(), language()) }
         self.courses = courses ?? .shared
         self.store = store ?? WidgetSnapshotStore()
         self.coordinator = coordinator ?? WidgetReloadCoordinator()
@@ -76,8 +78,8 @@ final class WidgetSnapshotWriter {
         calendar.quietDays(optedIn: optedIn).quietDayKeys(from: now, days: outsideTermHorizonDays)
     }
 
-    /// An unchanged snapshot is neither written nor reloaded: this runs on every return to the
-    /// app and every data change, and each reload spends the widgets' budget.
+    /// An unchanged snapshot and language are neither written nor reloaded: this runs on every
+    /// return to the app and every data change, and each reload spends the widgets' budget.
     func regenerate(forceReload: Bool = false) {
         guard isProtectedDataAvailable() else {
             owesForcedReload = owesForcedReload || forceReload
@@ -89,7 +91,7 @@ final class WidgetSnapshotWriter {
         let colorMap = CourseColorStore.shared.files.loadCourseColorMap()
         let now = AppClock.now()
         let (calendar, optedIn) = schoolCalendar()
-        let (accentHex, accentGradient) = accent()
+        let (accentHex, accentGradient, language) = preferences()
         let input = WidgetSnapshotBuilder.Input(
             courses: courseProvider.currentCourses(semester: semester),
             customNames: courses.loadCourseCustomNamesFlat(),
@@ -117,9 +119,11 @@ final class WidgetSnapshotWriter {
             $0.id == $1.id && $0.name == $1.name && Self.hasSameContent($0.snapshot, as: $1.snapshot)
         }
         let ownChanged = store.readSnapshot().map { !Self.hasSameContent(snapshot, as: $0) } ?? true
-        guard forceReload || ownChanged || peopleChanged else { return }
+        let languageChanged = store.language.read() != language
+        guard forceReload || ownChanged || peopleChanged || languageChanged else { return }
         store.writeSnapshot(snapshot)
         store.writePeople(people)
+        store.language.write(language)
         coordinator.requestReload()
     }
 

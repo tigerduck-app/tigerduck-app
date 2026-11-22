@@ -41,7 +41,7 @@ struct TodayView: View {
 private struct TodayRow: View {
     let course: WatchCourse
     let policy: WatchVisualStylePolicy
-    let language: WatchLanguage
+    let language: AppLanguage
 
     var body: some View {
         HStack(spacing: 8) {

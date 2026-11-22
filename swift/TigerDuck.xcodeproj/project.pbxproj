@@ -171,13 +171,22 @@
 				Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
 				Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
 				Devices/LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Persistence/AppLanguageStore.swift,
 				Persistence/AppUserDefaults.swift,
+				Shared/AppLanguageEnvironment.swift,
 				Shared/AssessmentMark.swift,
 				Support/Clock/AppClock.swift,
 				Support/Clock/ClockOverride.swift,
 				"UI/Theme/AccentGradient+ShapeStyle.swift",
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
+		};
+		7A9E1A5E30BB000100000001 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuck" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TigerDuckLiveActivityLiveActivity.swift,
+			);
+			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
 		B21DC7402FB8901100AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatch Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -210,7 +219,9 @@
 			membershipExceptions = (
 				Devices/Widgets/OpenLibraryPassIntent.swift,
 				Devices/Widgets/WidgetSnapshot.swift,
+				Persistence/AppLanguageStore.swift,
 				Persistence/AppUserDefaults.swift,
+				Shared/AppLanguageEnvironment.swift,
 				Shared/AssessmentMark.swift,
 				Shared/ClassTableLayout.swift,
 				Shared/CourseBlockRoom.swift,
@@ -252,7 +263,6 @@
 				Theme/VisualPreset.swift,
 				Watch/NextClassResolver.swift,
 				Watch/WatchCourse.swift,
-				Watch/WatchLanguage.swift,
 				Watch/WatchSnapshot.swift,
 				Watch/WatchWireFormat.swift,
 			);
@@ -321,6 +331,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				42B9BC152F90EBFB00D3B5A1 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuckLiveActivityExtension" target */,
+				7A9E1A5E30BB000100000001 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuck" target */,
 			);
 			path = TigerDuckLiveActivity;
 			sourceTree = "<group>";
@@ -1350,6 +1361,8 @@
 					AppEnvironment.swift,
 					AppFeature.swift,
 					AppIcon.swift,
+					AppLanguageEnvironment.swift,
+					AppLanguageStore.swift,
 					AppLogger.swift,
 					AppModelStore.swift,
 					AppPreferences.swift,
@@ -1943,6 +1956,8 @@
 					AppEnvironment.swift,
 					AppFeature.swift,
 					AppIcon.swift,
+					AppLanguageEnvironment.swift,
+					AppLanguageStore.swift,
 					AppLogger.swift,
 					AppModelStore.swift,
 					AppPreferences.swift,

@@ -11,12 +11,13 @@ struct DeviceSurfaceSyncerTests {
         var accent = 0x007AFF
         var deviceAccents = AppPreferences.DeviceAccents()
         var preset = "default"
+        var language = "zh-Hant"
     }
 
     final class Calls {
         var widgets: [Bool] = []
         var watch = 0
-        var liveActivity = 0
+        var liveActivity: [Bool] = []
     }
 
     private let inputs = Inputs()
@@ -30,11 +31,11 @@ struct DeviceSurfaceSyncerTests {
             surfaces: .init(
                 widgets: { [calls] in calls.widgets.append($0) },
                 watch: { [calls] in calls.watch += 1 },
-                liveActivity: { [calls] in calls.liveActivity += 1 }
+                liveActivity: { [calls] in calls.liveActivity.append($0) }
             ),
             fingerprint: { [inputs] unobserved in
                 .init(
-                    data: data, language: "zh", accentHex: inputs.accent, deviceAccents: inputs.deviceAccents,
+                    data: data, language: inputs.language, accentHex: inputs.accent, deviceAccents: inputs.deviceAccents,
                     visualPreset: inputs.preset, signedIn: true, unobserved: unobserved
                 )
             },
@@ -55,7 +56,7 @@ struct DeviceSurfaceSyncerTests {
 
         try await waitUntil { calls.watch == 1 }
         #expect(calls.widgets == [false])
-        #expect(calls.liveActivity == 1)
+        #expect(calls.liveActivity == [false])
         #expect(await sleeper.requestedDurations == [DeviceSurfaceSyncer.debounce, DeviceSurfaceSyncer.debounce])
         withExtendedLifetime(syncer) {}
     }
@@ -70,7 +71,7 @@ struct DeviceSurfaceSyncerTests {
 
         try await waitUntil { calls.watch == 1 }
         #expect(calls.widgets == [false])
-        #expect(calls.liveActivity == 1)
+        #expect(calls.liveActivity == [false])
         withExtendedLifetime(syncer) {}
     }
 
@@ -84,11 +85,11 @@ struct DeviceSurfaceSyncerTests {
 
         try await waitUntil { calls.watch == 1 }
         #expect(calls.widgets.isEmpty)
-        #expect(calls.liveActivity == 0)
+        #expect(calls.liveActivity.isEmpty)
         withExtendedLifetime(syncer) {}
     }
 
-    @Test("a new locale reloads the widgets even when their snapshot stays the same")
+    @Test("a new locale reloads the widgets and redraws the running Live Activities")
     func aLocaleChangeForcesAWidgetReload() async throws {
         let syncer = makeSyncer()
 
@@ -97,6 +98,20 @@ struct DeviceSurfaceSyncerTests {
         await sleeper.fire()
 
         try await waitUntil { calls.widgets == [true] }
+        #expect(calls.liveActivity == [true])
+        withExtendedLifetime(syncer) {}
+    }
+
+    @Test("a new app language reloads the widgets and redraws the running Live Activities")
+    func anAppLanguageChangeForcesAWidgetReload() async throws {
+        let syncer = makeSyncer()
+
+        inputs.language = LanguageManager.system
+        try await sleeper.waitUntilArmed()
+        await sleeper.fire()
+
+        try await waitUntil { calls.widgets == [true] }
+        #expect(calls.liveActivity == [true])
         withExtendedLifetime(syncer) {}
     }
 

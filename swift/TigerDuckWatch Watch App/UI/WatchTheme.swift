@@ -1,4 +1,5 @@
 import SwiftUI
+import TigerDuckCore
 
 struct WatchTheme: ViewModifier {
     let snapshot: WatchSnapshot?
@@ -6,7 +7,7 @@ struct WatchTheme: ViewModifier {
     func body(content: Content) -> some View {
         content
             .accentColor(accent)
-            .environment(\.locale, WatchLanguage(tag: snapshot?.languageTag).locale)
+            .environment(\.locale, AppLanguage(tag: snapshot?.languageTag).locale)
     }
 
     private var accent: Color {

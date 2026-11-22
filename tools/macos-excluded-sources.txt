@@ -303,7 +303,6 @@ WidgetContainer.swift
 # there even though it lives under Shared/.
 NextClassResolver.swift
 WatchCourse.swift
-WatchLanguage.swift
 WatchLibraryPayload.swift
 WatchPayloadCodec.swift
 WatchSnapshot.swift
@@ -534,3 +533,6 @@ WeekGridParts.swift
 WeekGridView.swift
 WidgetDayLayout.swift
 WidgetPalette.swift
+
+# TigerDuckLiveActivity — the Live Activity's views, which the app compiles only for the phone tests that draw them
+TigerDuckLiveActivityLiveActivity.swift
