@@ -533,3 +533,6 @@ WeekGridParts.swift
 WeekGridView.swift
 WidgetDayLayout.swift
 WidgetPalette.swift
+
+# TigerDuckLiveActivity — the Live Activity's views, which the app compiles only for the phone tests that draw them
+TigerDuckLiveActivityLiveActivity.swift

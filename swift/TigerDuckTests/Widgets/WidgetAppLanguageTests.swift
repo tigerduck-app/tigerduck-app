@@ -30,6 +30,19 @@ struct WidgetAppLanguageTests {
         return AppLanguageStore(defaults: UserDefaults(suiteName: suite)).read()
     }
 
+    private static func showLiveActivity(_ scenario: LiveActivityScenarioKind, in language: AppLanguage) throws -> UIWindow {
+        let now = Date()
+        let snapshot = LiveActivitySnapshot(
+            scenario: scenario, title: "資料結構與演算法", subtitle: TimeRange.liveActivitySubtitle("10:20", "12:10"),
+            locationText: "TR-412", instructor: "王大明", countdownTarget: now.addingTimeInterval(40 * 60),
+            progressStart: now.addingTimeInterval(-10 * 60), accentHex: 0x4ECDC4, deepLink: nil, sourceId: "CS2001"
+        )
+        let view = LockScreenView(snapshot: snapshot, language: language)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(Color(red: 0x4E / 255, green: 0xCD / 255, blue: 0xC4 / 255).opacity(0.12))
+        return try Host.show(view, size: CGSize(width: 364, height: 136), background: Color(white: 0.96), margins: 0)
+    }
+
     private static func showNextClass(_ family: WidgetFamily, at now: Date, in language: AppLanguage) throws -> UIWindow {
         let snapshot = Fixtures.snapshot()
         let derived = WidgetTimelineDerivation.derive(snapshot: snapshot, at: now)
@@ -39,6 +52,41 @@ struct WidgetAppLanguageTests {
             .appLanguage(language)
         let size = family == .systemSmall ? CGSize(width: 155, height: 155) : CGSize(width: 329, height: 155)
         return try Host.show(view, size: size, background: palette.canvas, margins: family == .systemSmall ? 14 : 11)
+    }
+
+    @Test func theLiveActivityShowsTheLanguageChosenInTheApp() async throws {
+        try await withAccessibilityAutomation {
+            let inClass = try Self.zhHant("live_activity_status_in_class_short")
+            let window = try Self.showLiveActivity(.inClass, in: Self.written("zh-Hant"))
+            defer { window.isHidden = true }
+
+            let texts = try await Host.texts(in: window, waitingFor: inClass)
+
+            #expect(!texts.contains(String(localized: "live_activity_status_in_class_short")), "\(texts)")
+            #expect(texts.contains(TimeRange.spoken("10:20", "12:10") { AppLanguage(tag: "zh-Hant").string($0) }), "\(texts)")
+            #expect(texts.contains { $0.wholeMatch(of: #/\d+:\d{2}/#) != nil }, "\(texts) shows no countdown")
+            window.saveSnapshot(as: "widget-app-language-live-activity-zh-Hant")
+        }
+    }
+
+    @Test func aClassAboutToStartSaysSoInTheLanguageChosenInTheApp() async throws {
+        try await withAccessibilityAutomation {
+            let window = try Self.showLiveActivity(.classPreparing, in: Self.written("zh-Hant"))
+            defer { window.isHidden = true }
+
+            _ = try await Host.texts(in: window, waitingFor: try Self.zhHant("live_activity_status_class_preparing"))
+        }
+    }
+
+    @Test func withoutATagTheLiveActivityShowsTheSystemsLanguage() async throws {
+        try await withAccessibilityAutomation {
+            let window = try Self.showLiveActivity(.inClass, in: Self.written(nil))
+            defer { window.isHidden = true }
+
+            let texts = try await Host.texts(in: window, waitingFor: String(localized: "live_activity_status_in_class_short"))
+
+            #expect(texts.contains(TimeRange.spoken("10:20", "12:10")), "\(texts)")
+        }
     }
 
     @Test func aWidgetShowsTheLanguageChosenInTheApp() async throws {

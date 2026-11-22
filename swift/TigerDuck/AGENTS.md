@@ -66,6 +66,9 @@ Each rule below has one home; call it instead of writing the rule again.
   the app as on each background push, is `App/PushAppDelegate.swift`'s, through
   `DeliveredNotificationCenter`.
 - Widget, Watch and Live Activity refresh: `Devices/DeviceSurfaceSyncer.swift`.
+- Words the Watch, a widget or the Live Activity show in the language chosen in the app:
+  `AppLanguage` in TigerDuckCore. The widgets and the Live Activity read it from the App Group
+  (`Persistence/AppLanguageStore.swift`), where `WidgetSnapshotWriter` writes it.
 - Copying text to the pasteboard on iOS and macOS: `Support/Pasteboard.swift`.
 
 ## Anti-patterns

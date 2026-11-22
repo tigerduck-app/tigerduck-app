@@ -171,6 +171,7 @@
 				Devices/LiveActivity/Models/LiveActivityScenarioKind.swift,
 				Devices/LiveActivity/Models/LiveActivitySnapshot.swift,
 				Devices/LiveActivity/Runtime/TigerDuckActivityAttributes.swift,
+				Persistence/AppLanguageStore.swift,
 				Persistence/AppUserDefaults.swift,
 				Shared/AssessmentMark.swift,
 				Support/Clock/AppClock.swift,
@@ -178,6 +179,13 @@
 				"UI/Theme/AccentGradient+ShapeStyle.swift",
 			);
 			target = 42B9BBFD2F90EBFA00D3B5A1 /* TigerDuckLiveActivityExtension */;
+		};
+		7A9E1A5E30BB000100000001 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuck" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				TigerDuckLiveActivityLiveActivity.swift,
+			);
+			target = 424C46552F6E763C009D1DDA /* TigerDuck */;
 		};
 		B21DC7402FB8901100AE2430 /* Exceptions for "TigerDuck" folder in "TigerDuckWatch Watch App" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
@@ -321,6 +329,7 @@
 			isa = PBXFileSystemSynchronizedRootGroup;
 			exceptions = (
 				42B9BC152F90EBFB00D3B5A1 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuckLiveActivityExtension" target */,
+				7A9E1A5E30BB000100000001 /* Exceptions for "TigerDuckLiveActivity" folder in "TigerDuck" target */,
 			);
 			path = TigerDuckLiveActivity;
 			sourceTree = "<group>";
