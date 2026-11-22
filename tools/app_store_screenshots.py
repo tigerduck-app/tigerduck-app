@@ -268,6 +268,9 @@ def main() -> int:
     problems: list[str] = []
     for language in languages:
         for device in devices:
+        # A Watch restarted after its phone shows the phone as disconnected until the phone restarts.
+        if watch:
+            set_language(udids[watch.slug], language, LANGUAGES[language])
             udid = udids[device.slug]
             print(f"{device.name}, {language}")
             prepare(udid, device, language, pinned)
