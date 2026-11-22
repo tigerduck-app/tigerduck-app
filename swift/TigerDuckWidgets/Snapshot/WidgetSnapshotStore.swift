@@ -19,8 +19,8 @@ nonisolated final class WidgetSnapshotStore {
         ) != nil
     }
 
-    init(appGroupIdentifier: String = WidgetSnapshot.appGroupIdentifier) {
-        let requiresSharedContainer = appGroupIdentifier == WidgetSnapshot.appGroupIdentifier
+    init(appGroupIdentifier: String = AppUserDefaults.appGroupIdentifier) {
+        let requiresSharedContainer = appGroupIdentifier == AppUserDefaults.appGroupIdentifier
         if !requiresSharedContainer || Self.isAppGroupAvailable(appGroupIdentifier),
            let suite = UserDefaults(suiteName: appGroupIdentifier) {
             self.defaults = suite

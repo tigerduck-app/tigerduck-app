@@ -23,7 +23,7 @@ final class WatchLibraryCredentialBroadcaster {
         defaults: UserDefaults? = nil
     ) {
         self.session = session ?? WCSession.default
-        self.defaults = defaults ?? AppUserDefaults.suite("group.org.ntust.app.TigerDuck") ?? .standard
+        self.defaults = defaults ?? AppUserDefaults.suite(AppUserDefaults.appGroupIdentifier) ?? .standard
     }
 
     func broadcastSet(username: String, password: String) {

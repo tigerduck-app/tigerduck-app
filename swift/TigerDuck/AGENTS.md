@@ -41,7 +41,7 @@ Each rule below has one home; call it instead of writing the rule again.
 - Course colors: `Stores/CourseColorStore.swift`.
 - The cached Moodle assignments: `AssignmentFetch` in `School/Moodle/`.
 - Settings: a `Defaults` key in `App/AppDefaults.swift`; a raw `UserDefaults` key goes through
-  `Persistence/AppUserDefaults.swift`.
+  `Persistence/AppUserDefaults.swift`, which also names the App Group the extensions share.
 - Term codes: `AcademicTerm` in TigerDuckCore.
 - Today's classes, now and next: `ClassTimeline` in TigerDuckCore.
 - Days without classes, from the terms and holidays: `QuietDayCalendar` in TigerDuckCore.

@@ -6,7 +6,7 @@ import Foundation
 /// WatchConnectivity push.
 struct DebugClockStore {
     static let key = AppClock.persistenceKey
-    static let suiteName = AppClock.appGroupSuiteName
+    static let suiteName = AppUserDefaults.appGroupIdentifier
 
     private let defaults: UserDefaults
 

@@ -49,7 +49,7 @@ final class NTUSTSessionManager {
     /// The identifier must be an App Group in `TigerDuck.entitlements`. Any other gives a store
     /// kept only in memory, which loses the SSO session on every relaunch.
     let ntustCookieJar: HTTPCookieStorage = HTTPCookieStorage
-        .sharedCookieStorage(forGroupContainerIdentifier: "group.org.ntust.app.TigerDuck")
+        .sharedCookieStorage(forGroupContainerIdentifier: AppUserDefaults.appGroupIdentifier)
 
     private static let cookieFreshness = FreshnessPolicy(lifetime: 3600)
 
