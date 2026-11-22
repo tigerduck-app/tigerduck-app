@@ -95,6 +95,16 @@ struct MailHTMLViewTests {
         #expect(try await Self.settledHeight(of: page) < long / 4)
     }
 
+    @Test("text overflowing a fixed-height box counts toward the height, so none of it is cut off")
+    func overflowingTextCountsTowardTheHeight() async throws {
+        let page = Page()
+        page.html = #"<div style="height:20px">"# + Self.paragraph + Self.paragraph + "</div>"
+        let window = try Self.show(Host(page: page))
+        defer { window.isHidden = true }
+        try await waitUntil { page.height > 400 }
+        #expect(try await Self.settledHeight(of: page) > 400)
+    }
+
     @Test("the first line starts at the page's top: the leading chain of first children loses its top margin, nothing else")
     func theFirstLineStartsAtThePagesTop() async throws {
         let page = Page()

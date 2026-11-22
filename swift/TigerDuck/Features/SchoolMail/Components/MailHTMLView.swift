@@ -148,8 +148,6 @@ struct MailHTMLView: UIViewRepresentable {
             fitHeight(of: webView)
         }
 
-        /// Sets the page's text size and the height to the document's, which a smaller size or
-        /// a shorter page brings down too.
         func fitHeight(of webView: WKWebView) {
             let zoom = parent.textZoom
             zoomOnPage = zoom

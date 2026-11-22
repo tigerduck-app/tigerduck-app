@@ -119,12 +119,13 @@ enum MailWebViewFactory {
     }
 
     /// Run in the app's own content world, which `allowsContentJavaScript` does not turn off. The
-    /// root element's box is the document's height; the scroll view's content never shrinks
-    /// below the web view's frame.
+    /// scroll view's content and the root's `scrollHeight` never shrink below the web view's
+    /// frame, so the height is the root's box, or the body's scroll height when text overflows a
+    /// fixed-height box the sender styled.
     static let zoomAndMeasure = """
         const zoomed = document.getElementById("\(zoomedElementID)");
         if (zoomed) zoomed.style.zoom = zoom + "%";
-        return document.documentElement.getBoundingClientRect().height;
+        return Math.max(document.documentElement.getBoundingClientRect().height, document.body.scrollHeight);
         """
 
     /// The address of the image at page point (`x`, `y`), unless a link holds it: a tap there is
