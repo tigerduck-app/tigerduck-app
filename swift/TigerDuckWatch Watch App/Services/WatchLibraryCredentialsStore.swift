@@ -49,11 +49,10 @@ final class WatchLibraryCredentialsStore: ObservableObject {
                 return .malformed
             }
             clearToken()
-            let codeKept = payload.code.map { WatchKeychain.set($0, forKey: Keys.code) }
-                ?? WatchKeychain.remove(forKey: Keys.code)
-            guard codeKept,
+            guard WatchKeychain.remove(forKey: Keys.code),
                   WatchKeychain.set(u, forKey: Keys.username),
-                  WatchKeychain.set(p, forKey: Keys.password) else {
+                  WatchKeychain.set(p, forKey: Keys.password),
+                  payload.code.map({ WatchKeychain.set($0, forKey: Keys.code) }) ?? true else {
                 return .malformed
             }
         case .wipe:
