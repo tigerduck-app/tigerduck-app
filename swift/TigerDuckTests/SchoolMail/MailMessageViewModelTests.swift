@@ -164,6 +164,21 @@ struct MailMessageViewModelTests {
         #expect(h.model.htmlTheme == .app)
     }
 
+    @Test func onlyTheFormattedMailOnTheLightPageDropsTheDivider() async {
+        let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
+        #expect(!h.model.formattedOnLightPage)
+        await h.model.load()
+        #expect(!h.model.formattedOnLightPage)
+        h.model.viewsInLightMode = true
+        #expect(h.model.formattedOnLightPage)
+        h.model.mode = .plain
+        #expect(!h.model.formattedOnLightPage)
+        h.model.mode = .formatted
+        h.model.viewsInLightMode = false
+        h.model.appearsLight = true
+        #expect(h.model.formattedOnLightPage)
+    }
+
     @Test func theLightAppearanceDrawsEveryMailOnTheLightPage() async {
         let h = Self.harness(FakeMailClient.message(uid: 5, text: "純文字", html: "<p>hi</p>"))
         await h.model.load()
@@ -790,6 +805,16 @@ struct MailMessageViewModelTests {
         #expect(document.contains("maximum-scale=1, user-scalable=no"))
         #expect(document.contains(#"<div id="mail" style="zoom:130%"><p>x</p></div>"#))
         #expect(MailWebViewFactory.document(for: "", allowRemoteImages: false).contains("zoom:100%"))
+    }
+
+    @Test func theLightPageShadesItsTopAndBottomEdgeAndTheAppsPageHasNoEdge() {
+        let light = MailWebViewFactory.document(for: "", allowRemoteImages: false, theme: .light)
+        #expect(light.contains(
+            "body{padding:16px;box-shadow:inset 0 12px 12px -12px rgba(0,0,0,.5),inset 0 -12px 12px -12px rgba(0,0,0,.5);}"
+        ))
+        let app = MailWebViewFactory.document(for: "", allowRemoteImages: false)
+        #expect(app.contains("body{padding:0 16px;}"))
+        #expect(!app.contains("box-shadow"))
     }
 
     @Test func theDocumentIsDrawnOnTheAppsPage() {

@@ -139,7 +139,7 @@ struct MailMessageContentView: View {
                         onLoadedChange: { webLoaded = $0 }
                     )
                     .frame(height: webHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+                    .padding(.horizontal, -MailMessageView.sideInset)
                     if !webLoaded {
                         ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
                     }

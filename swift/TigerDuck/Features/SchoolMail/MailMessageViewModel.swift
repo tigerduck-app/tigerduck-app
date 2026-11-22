@@ -103,6 +103,8 @@ final class MailMessageViewModel: Identifiable {
 
     var formattedHTML: String? { showsLightPage ? pages?.light : pages?.app }
 
+    var formattedOnLightPage: Bool { mode == .formatted && formattedHTML != nil && showsLightPage }
+
     private var showsLightPage: Bool { appearsLight || viewsInLightMode }
 
     var deleteIsPermanent: Bool {

@@ -99,11 +99,15 @@ enum MailWebViewFactory {
     ) -> String {
         let imageSources = allowRemoteImages ? "tdcid: data: https: http:" : "tdcid: data:"
         let scheme = theme.isDark ? "dark" : "light"
+        let inset = Int(MailMessageView.sideInset)
+        let page = theme.isDark
+            ? "padding:0 \(inset)px;"
+            : "padding:\(inset)px;box-shadow:inset 0 12px 12px -12px rgba(0,0,0,.5),inset 0 -12px 12px -12px rgba(0,0,0,.5);"
         return """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \(imageSources); style-src 'unsafe-inline'">
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-        <style>:root{color-scheme:\(scheme);}html,body{margin:0;padding:12px;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
+        <style>:root{color-scheme:\(scheme);}html,body{margin:0;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}body{\(page)}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
         </head><body><div id="\(zoomedElementID)" style="zoom:\(textZoom)%">\(bodyHTML)</div></body></html>
         """
     }

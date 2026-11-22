@@ -3,6 +3,9 @@ import SwiftUI
 import UIKit
 
 struct MailMessageView: View {
+    /// The screen's side margin, which the formatted body's own text inset repeats.
+    static let sideInset = TigerDuckTheme.Spacing.lg
+
     @State private var viewModel: MailMessageViewModel
     private let session: MailPageSession
     private let otherFolders: [String]
@@ -129,7 +132,9 @@ struct MailMessageView: View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.lg) {
             if let summary = viewModel.summary { MailMessageHeader(summary: summary) }
             MailMessageBanners(viewModel: viewModel)
-            Divider().background(Color.textSecondary)
+            if !viewModel.formattedOnLightPage {
+                Divider().background(Color.textSecondary)
+            }
             MailMessageContentView(viewModel: viewModel, webHeight: $webHeight, webLoaded: $webLoaded,
                                    pendingLinkTarget: $pendingLinkTarget)
             if !showsSource, let attachments = viewModel.detail?.attachments, !attachments.isEmpty {
@@ -137,7 +142,7 @@ struct MailMessageView: View {
                                    onOpen: open, onShare: share)
             }
         }
-        .padding(.horizontal, TigerDuckTheme.Spacing.lg)
+        .padding(.horizontal, Self.sideInset)
         .padding(.top, TigerDuckTheme.Spacing.xl)
         .padding(.bottom, showsSource ? TigerDuckTheme.Spacing.lg : TigerDuckTheme.Spacing.xxl)
         .frame(maxWidth: .infinity, alignment: .leading)
