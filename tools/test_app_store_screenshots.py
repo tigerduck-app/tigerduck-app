@@ -72,13 +72,12 @@ class ClockTests(unittest.TestCase):
         override = json.loads(bytes.fromhex(argument[1:-1]))
         self.assertEqual(override, {"instant": 817177260.0, "frozen": True, "savedAtReal": 817177260.0})
 
-    def test_the_status_bar_takes_the_pinned_date_except_an_ipads_in_another_language(self):
+    def test_the_status_bar_takes_the_pinned_date_except_on_an_ipad(self):
         instant = datetime(2026, 11, 24, 9, 41, tzinfo=shots.TAIPEI)
         phone, ipad = shots.DEVICES[0], shots.DEVICES[2]
         self.assertTrue(ipad.shows_date_in_status_bar)
-        for device, language in ((phone, "zh-Hant"), (phone, "en"), (ipad, "en")):
-            self.assertEqual(shots.status_bar_time(device, language, instant), "2026-11-24T09:41:00.000+08:00")
-        self.assertEqual(shots.status_bar_time(ipad, "zh-Hant", instant), "9:41")
+        self.assertEqual(shots.status_bar_time(phone, instant), "2026-11-24T09:41:00.000+08:00")
+        self.assertEqual(shots.status_bar_time(ipad, instant), "9:41")
 
 
 if __name__ == "__main__":

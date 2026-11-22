@@ -81,15 +81,16 @@ def pinned_clock(today: date) -> datetime:
     return datetime.combine(tuesday, time(9, 41), TAIPEI)
 
 
-def status_bar_time(device: Device, language: str, instant: datetime) -> str:
+def status_bar_time(device: Device, instant: datetime) -> str:
     """`simctl status_bar --time`: the pinned date and time, or the time alone where a date shows wrong.
 
     simctl takes an ISO date only with milliseconds. Given one, an iPad's status bar shows the date in
-    English whatever the device's language, so an iPad in another language gets the time alone and
-    shows the real date in its language. On the Lock Screen a date's year becomes 2000 ("Fri Nov 24"
-    for Tuesday, 24 November 2026), and in zh-Hant any override shows Saturday, 1 January.
+    English whatever the device's language, and soon after a restart with the year 2000's weekday or
+    not at all, so an iPad gets the time alone and shows the real date in its language. On the Lock
+    Screen a date's year becomes 2000 ("Fri Nov 24" for Tuesday, 24 November 2026), and in zh-Hant
+    any override shows Saturday, 1 January.
     """
-    if device.shows_date_in_status_bar and language != "en":
+    if device.shows_date_in_status_bar:
         return f"{instant.hour}:{instant.minute:02d}"
     return instant.isoformat(timespec="milliseconds")
 
@@ -189,7 +190,7 @@ def prepare(udid: str, device: Device, language: str, instant: datetime) -> None
     if device.platform == "iOS":
         simctl("ui", udid, "appearance", "dark")
         simctl("status_bar", udid, "clear")
-        simctl("status_bar", udid, "override", "--time", status_bar_time(device, language, instant), *STATUS_BAR)
+        simctl("status_bar", udid, "override", "--time", status_bar_time(device, instant), *STATUS_BAR)
 
 
 def xcodebuild(arguments: list[str], log: Path, env: dict[str, str] | None = None) -> bool:
@@ -267,10 +268,10 @@ def main() -> int:
 
     problems: list[str] = []
     for language in languages:
-        for device in devices:
         # A Watch restarted after its phone shows the phone as disconnected until the phone restarts.
         if watch:
             set_language(udids[watch.slug], language, LANGUAGES[language])
+        for device in devices:
             udid = udids[device.slug]
             print(f"{device.name}, {language}")
             prepare(udid, device, language, pinned)
