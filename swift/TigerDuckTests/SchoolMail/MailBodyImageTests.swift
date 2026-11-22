@@ -91,6 +91,15 @@ struct MailBodyImageTests {
         #expect(await MailBodyImage.load(source, in: detail, allowRemoteImages: false) == nil)
     }
 
+    @Test func onlyAWebAddressIsFetchedWhenRemoteImagesAreAllowed() async throws {
+        let detail = try Self.detail(images: [:])
+        let file = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).png")
+        try Self.png.write(to: file)
+        defer { try? FileManager.default.removeItem(at: file) }
+        #expect(await MailBodyImage.load(file.absoluteString, in: detail, allowRemoteImages: true) == nil)
+        #expect(await MailBodyImage.load("javascript:alert(1)", in: detail, allowRemoteImages: true) == nil)
+    }
+
     @Test func aRemoteImageIsReadUpToTheInlineImageLimit() async throws {
         let detail = try Self.detail(images: [:])
         let fits = Self.png + Data(count: MailConstants.maxInlineImageBytes - Self.png.count)

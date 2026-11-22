@@ -11,11 +11,14 @@ nonisolated struct MailBodyImage: Equatable, Sendable {
     static let previewableTypes: [UTType] = [.png, .jpeg, .gif, .webP, .heic, .heif, .bmp, .tiff]
 
     /// No cookies, no stored cache: the sender's server sees the request the page's image made.
+    /// The resource timeout replaces URLSession's default of seven days, which a server sending a
+    /// byte a minute would otherwise hold the tap for.
     static let session = URLSession(configuration: {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpCookieAcceptPolicy = .never
         configuration.httpShouldSetCookies = false
         configuration.urlCache = nil
+        configuration.timeoutIntervalForResource = 30
         return configuration
     }())
 
