@@ -27,15 +27,7 @@ final class WatchLibraryCredentialBroadcaster {
     }
 
     func broadcastSet(username: String, password: String) {
-        let epoch = nextEpoch()
-        let payload = WatchLibraryCredentialPayload(
-            kind: .set,
-            credEpoch: epoch,
-            issuedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
-            username: username,
-            password: password
-        )
-        send(payload)
+        send(credential(username: username, password: password, epoch: nextEpoch()))
     }
 
     func broadcastWipe() {
@@ -53,15 +45,23 @@ final class WatchLibraryCredentialBroadcaster {
               let password = LibraryService.storedPasswordIfAvailable() else {
             return
         }
-        let epoch = republishEpoch()
-        let payload = WatchLibraryCredentialPayload(
+        send(credential(username: username, password: password, epoch: republishEpoch()))
+    }
+
+    /// The demo account's credential goes with its code, which the watch shows without signing in;
+    /// nil for the demo's when the fixture has no code.
+    func credential(username: String, password: String, epoch: Int) -> WatchLibraryCredentialPayload? {
+        let isDemo = DemoFixture.isDemoLibrary(username, password)
+        let code = isDemo ? DemoFixture.bundled?.libraryQr?.content : nil
+        guard !isDemo || code != nil else { return nil }
+        return WatchLibraryCredentialPayload(
             kind: .set,
             credEpoch: epoch,
             issuedAtMs: Int64(Date().timeIntervalSince1970 * 1000),
             username: username,
-            password: password
+            password: password,
+            code: code
         )
-        send(payload)
     }
 
     private func nextEpoch() -> Int {
@@ -78,8 +78,8 @@ final class WatchLibraryCredentialBroadcaster {
         return bootstrapped
     }
 
-    private func send(_ payload: WatchLibraryCredentialPayload) {
-        guard !DemoFixture.isDemoLibrary(payload.username, payload.password) else { return }
+    private func send(_ payload: WatchLibraryCredentialPayload?) {
+        guard let payload else { return }
         let json: String
         do {
             json = try payload.encodedJSON()

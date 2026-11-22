@@ -52,4 +52,23 @@ struct LiveActivitySyncGateTests {
             #expect(whileOff == nil)
         }
     }
+
+    @Test("the demo account, whose sync no server can turn on, starts its activities on the device")
+    func theDemoStartsWithSyncOff() async {
+        #expect(effectiveLiveActivityEnabled(isLiveActivityEnabled: true, cloudSyncEnabled: false, isDemo: true))
+        #expect(!effectiveLiveActivityEnabled(isLiveActivityEnabled: false, cloudSyncEnabled: false, isDemo: true))
+        await NotificationSettingsFixtures.withStore { store in
+            store.isLiveActivityEnabled = true
+            let demo = LiveActivityScenarioResolver().resolve(
+                courses: [],
+                assignments: [Self.urgentAssignment()],
+                preferences: store,
+                cloudSyncEnabled: false,
+                isDemo: true,
+                accentHex: 0,
+                now: Self.now
+            )
+            #expect(demo != nil)
+        }
+    }
 }

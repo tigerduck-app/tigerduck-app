@@ -89,6 +89,7 @@ jobs:
               TigerDuckTests/CourseColorPickerSheetTests
               TigerDuckTests/CourseDetailRootBarTests
               TigerDuckTests/CourseSyllabusPageTests
+              TigerDuckTests/DemoScreensTests
               TigerDuckTests/EmptyClassroomLayoutTests
               TigerDuckTests/ForwardPagingLockTests
               TigerDuckTests/HomeAssignmentFilterSwitchTests

@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 extension DemoFixture.Course {
     func course(in language: DemoLanguage, semester: String, onMoodle: Bool) -> SDCourse {
@@ -35,6 +36,73 @@ extension DemoFixture.CalendarEntry {
             source: source.flatMap(EventSource.init(rawValue:)) ?? .school
         )
     }
+}
+
+extension DemoFixture.CourseChange {
+    func row(from today: Date) -> CourseChangesDTO.Row {
+        let day = ClassTableViewModel.nextDate(onWeekday: weekday, from: today)
+        return CourseChangesDTO.Row(
+            id: id, course_no: courseNo, kind: kind, periods: periods, class_days: [TaipeiTime.dayKey(for: day)],
+            room: room, start: start, end: end, note_zh: note?.text(in: .zh), note_en: note?.text(in: .en)
+        )
+    }
+}
+
+extension DemoFixture.Scores {
+    /// Earned credits are those of every listed course, and enrolled ones those of the current term.
+    func report(in language: DemoLanguage, currentTerm: String, enrolledCredits: Double) -> ScoreReport? {
+        guard let current = AcademicTerm(code: currentTerm) else { return nil }
+        let placed = (terms ?? []).map { term in
+            (term, (0..<term.termsAgo).reduce(current) { later, _ in later.previousRegular }.code)
+        }
+        let rankings = placed.compactMap { term, code in
+            term.semester.map { SemesterRanking(term: code, semester: $0.stats, cumulative: (term.cumulative ?? $0).stats) }
+        }
+        let courses = placed.flatMap { term, code in
+            (term.courses ?? []).enumerated().map { index, course in
+                CourseGrade(
+                    index: index + 1, term: code, code: course.code, name: course.name.text(in: language),
+                    credits: course.credits, creditType: .normal, grade: course.grade,
+                    status: course.status.flatMap(GradeStatus.init(rawValue:)) ?? .graded, remark: "",
+                    geDimension: nil, distanceLearning: false
+                )
+            }
+        }
+        let earned = courses.compactMap(\.credits).reduce(0, +)
+        func inPerson(_ credits: Double) -> CreditBreakdown { CreditBreakdown(inPerson: credits, distance: 0, total: credits) }
+        return ScoreReport(
+            student: student?.text(in: language) ?? "", currentTerm: currentTerm, rankings: rankings, courses: courses,
+            creditSummary: CreditSummary(
+                earned: inPerson(earned), enrolled: inPerson(enrolledCredits), total: inPerson(earned + enrolledCredits)
+            )
+        )
+    }
+}
+
+extension DemoFixture.Club {
+    func card(in language: DemoLanguage) -> ClubCard {
+        ClubCard(
+            id: id, name: name.text(in: .zh), enName: name.text(in: .en), attribute: attribute,
+            tagline: tagline?.text(in: language)
+        )
+    }
+
+    /// `start` and `end` are `HH:mm`, and the feed's times `HH:mm:ss`.
+    func activities(in language: DemoLanguage, from today: Date) -> [ClubActivity] {
+        (activities ?? []).map { activity in
+            let day = TaipeiTime.dayKey(for: ClassTableViewModel.nextDate(onWeekday: activity.weekday, from: today))
+            return ClubActivity(
+                id: activity.id, name: activity.name.text(in: language), clubID: id, clubName: name.text(in: .zh),
+                date: day, endDate: day, startTime: activity.start + ":00", endTime: activity.end + ":00",
+                location: activity.location?.text(in: language) ?? "", kind: activity.type ?? .meeting,
+                content: activity.content?.text(in: language) ?? ""
+            )
+        }
+    }
+}
+
+private extension DemoFixture.Scores.Rank {
+    var stats: RankingStats { RankingStats(classRank: classRank, deptRank: deptRank, gpa: gpa) }
 }
 
 extension DemoFixture.Bulletin {

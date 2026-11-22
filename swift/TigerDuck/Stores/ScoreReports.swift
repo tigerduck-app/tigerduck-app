@@ -2,9 +2,12 @@ import Foundation
 
 struct ScoreReports {
     var indicator: any LoadingIndicator = NTUSTSessionManager.shared
+    var stored: (_ studentId: String) -> (report: ScoreReport, cachedAt: Date)? = {
+        NTUSTScoreService.cachedScoreReport(studentId: $0)
+    }
 
     func cached(studentId: String) -> (report: ScoreReport, cachedAt: Date)? {
-        NTUSTScoreService.cachedScoreReport(studentId: studentId)
+        stored(studentId)
     }
 
     func fetch(

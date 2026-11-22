@@ -22,7 +22,8 @@ struct PushRegistrationServiceTests {
             apiClient: PushAPIClient(
                 baseURLProvider: { baseURL },
                 session: URLSession(configuration: config),
-                authHeaderProvider: authHeader
+                authHeaderProvider: authHeader,
+                signIns: signIns
             ),
             signIns: signIns,
             deviceClass: "iphone",
@@ -170,6 +171,29 @@ struct PushRegistrationServiceTests {
 
         #expect(SettingsAPIStub.requests(under: baseURL).isEmpty)
         #expect(retries.withLock { $0 }.isEmpty)
+    }
+
+    @Test("a Live Activity token of the demo account is not sent for the account that signs in after it")
+    func aDemoActivityTokenIsNotKept() async {
+        let baseURL = SettingsAPIStub.uniqueBaseURL()
+        let signIns = SignInSeries()
+        signIns.startDemo()
+        let service = Self.makeService(baseURL: baseURL, signIns: signIns)
+        let snapshot = LiveActivitySnapshot(
+            scenario: .inClass, title: "Course", subtitle: "09:10", locationText: nil, instructor: nil,
+            countdownTarget: nil, progressStart: nil, accentHex: 0, deepLink: nil, sourceId: "c_1"
+        )
+
+        await service.registerLiveActivityUpdateToken(
+            LiveActivityUpdateTokenRegistration(activityId: "demo-activity", updateTokenHex: "abcd", snapshot: snapshot)
+        )
+        signIns.end()
+        Self.expectAttempt(baseURL, registrations: 1)
+        await service.update(deviceToken: Data([0xAB, 0xCD, 0xEF]))
+        await service.awaitPendingRegistration()
+
+        #expect(SettingsAPIStub.requests(for: Self.registerURL(baseURL)).count == 1)
+        #expect(SettingsAPIStub.requests(for: baseURL.appendingPathComponent("live-activities/register")).isEmpty)
     }
 
     @Test("a sync-preferences PATCH that fails is sent again once a registration goes through")

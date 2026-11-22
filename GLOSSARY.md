@@ -27,3 +27,9 @@ _Avoid_: Remote class, 非同步, 線上自學 (as a kind)
 **Note** (備註):
 A course change that fits no other kind, kept as free text; the last resort, since a student sees its content only by opening the course.
 _Avoid_: Remark, memo
+
+## Accounts
+
+**Demo account** (示範帳號):
+The made-up student App Review signs in with; it works offline and shows the same data on iOS and Android.
+_Avoid_: Test account, guest account, 測試帳號

@@ -14,6 +14,7 @@ struct LiveActivityScenarioResolver {
         assignments: [SDAssignment],
         preferences: LiveActivityPreferencesStore,
         cloudSyncEnabled: Bool,
+        isDemo: Bool = false,
         accentHex: Int,
         now: Date = AppClock.now(),
         calendar: AcademicCalendar = .empty,
@@ -21,7 +22,8 @@ struct LiveActivityScenarioResolver {
     ) -> LiveActivitySnapshot? {
         guard effectiveLiveActivityEnabled(
             isLiveActivityEnabled: preferences.isLiveActivityEnabled,
-            cloudSyncEnabled: cloudSyncEnabled
+            cloudSyncEnabled: cloudSyncEnabled,
+            isDemo: isDemo
         ) else { return nil }
 
         let classesQuiet = !calendar.isClassDay(now, optedIn: optedInHolidayIDs)
