@@ -44,6 +44,7 @@ struct MailMessageView: View {
 
     var body: some View {
         page
+        .toastHost()
         .background(Color.backgroundPrimary)
         .onChange(of: colorScheme, initial: true) { _, scheme in viewModel.appearsLight = scheme == .light }
         .navigationBarTitleDisplayMode(.inline)

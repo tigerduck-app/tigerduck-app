@@ -160,7 +160,7 @@ struct MailMessageContentView: View {
     private var source: some View {
         if let source = viewModel.source {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-                Button(String(localized: "school_mail_copy_all")) { Pasteboard.copy(source) }
+                CopyButton(text: source, toast: "school_mail_source_copied") { Text(String(localized: "school_mail_copy_all")) }
                     .font(.caption.weight(.semibold))
                 MailSourceTextView(text: source)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)

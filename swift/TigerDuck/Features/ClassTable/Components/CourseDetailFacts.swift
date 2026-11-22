@@ -190,21 +190,11 @@ private struct CopyOnTap: ViewModifier {
     let hint: LocalizedStringResource
     let toast: LocalizedStringResource
 
-    @Environment(\.showToast) private var showToast
-    @State private var copies = 0
-
     func body(content: Content) -> some View {
-        Button {
-            Pasteboard.copy(text)
-            copies += 1
-            showToast(toast)
-        } label: {
-            content
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(Text(verbatim: "\(label), \(text)"))
-        .accessibilityHint(Text(hint))
-        .sensoryFeedback(.success, trigger: copies)
+        CopyButton(text: text, toast: toast) { content }
+            .buttonStyle(.plain)
+            .accessibilityLabel(Text(verbatim: "\(label), \(text)"))
+            .accessibilityHint(Text(hint))
     }
 }
 
