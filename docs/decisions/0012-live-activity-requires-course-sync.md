@@ -42,6 +42,10 @@ and `LiveActivityCoordinator` keeps or ends whatever ActivityKit is running.
   directly or through `LiveActivityRefresher.isAvailable`.
 - Settings disables the Live Activity row while course sync is off, the demo account's too, which
   keeps the switch's default.
+- The demo account's library credential reaches the watch with its code
+  (`WatchLibraryCredentialPayload.code`). A watch app built before that field signs in to the
+  library with the made-up credential, which fails; accepted, as the watch app ships with the phone
+  app.
 - `LiveActivitySyncGateTests` pins the function and the resolver, `ScheduleSyncServiceTests` the
   schedule upload, and `LiveActivityCoordinatorTests` the end rule while Live Activity is
   unavailable.
