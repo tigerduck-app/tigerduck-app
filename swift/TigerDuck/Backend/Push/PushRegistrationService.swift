@@ -124,6 +124,7 @@ actor PushRegistrationService {
     func registerLiveActivityUpdateToken(
         _ registration: LiveActivityUpdateTokenRegistration
     ) async {
+        guard !servesDemoAccount else { return }
         activities.pending[registration.activityId] = registration
         guard !tokens.isEmpty else {
             registerIfReady()

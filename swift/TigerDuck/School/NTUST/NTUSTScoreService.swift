@@ -60,12 +60,20 @@ enum NTUSTScoreService {
         return (report, Date())
     }
 
-    static func cachedScoreReport(studentId: String) -> (report: ScoreReport, cachedAt: Date)? {
-        ScoreReportFiles.shared.loadScoreReport(studentId: studentId)
+    static func cachedScoreReport(
+        studentId: String, files: ScoreReportFiles = .shared
+    ) -> (report: ScoreReport, cachedAt: Date)? {
+        files.loadScoreReport(studentId: studentId)
     }
 
-    static func invalidateCache(studentId: String) {
-        ScoreReportFiles.shared.invalidateScoreReport(studentId: studentId)
+    /// Keeps a report no server sent, the demo account's, as if fetched now.
+    static func keep(_ report: ScoreReport, studentId: String, files: ScoreReportFiles = .shared, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        files.saveScoreReport(report, studentId: studentId)
+    }
+
+    static func invalidateCache(studentId: String, files: ScoreReportFiles = .shared) {
+        files.invalidateScoreReport(studentId: studentId)
     }
 
     private static func fetchHTML(

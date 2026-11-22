@@ -1,9 +1,8 @@
 import SwiftUI
 
 struct CreditSummaryBento: View {
-    @Environment(AppEnvironment.self) private var app
-
     let summary: CreditSummary
+    let policy: VisualStylePolicy
 
     var body: some View {
         VStack(spacing: TigerDuckTheme.Spacing.sm) {
@@ -48,7 +47,7 @@ struct CreditSummaryBento: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: app.preferences.visualStylePolicy)
+        .presetCard(policy: policy)
         .frame(maxWidth: wide ? .infinity : nil)
     }
 }

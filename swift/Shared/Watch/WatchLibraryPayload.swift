@@ -16,16 +16,20 @@ public struct WatchLibraryCredentialPayload: Codable, Equatable, Sendable {
     public let issuedAtMs: Int64
     public let username: String?
     public let password: String?
+    /// The code the watch shows in place of asking the library, for a credential no library knows:
+    /// the demo account's. A watch built before it ignores it.
+    public let code: String?
 
     public init(
         kind: Kind,
         credEpoch: Int,
         issuedAtMs: Int64,
         username: String? = nil,
-        password: String? = nil
+        password: String? = nil,
+        code: String? = nil
     ) {
         assert(
-            kind == .set || (username == nil && password == nil),
+            kind == .set || (username == nil && password == nil && code == nil),
             ".wipe payloads must not carry credentials"
         )
         self.kind = kind
@@ -33,6 +37,7 @@ public struct WatchLibraryCredentialPayload: Codable, Equatable, Sendable {
         self.issuedAtMs = issuedAtMs
         self.username = username
         self.password = password
+        self.code = code
     }
 
     public func encodedJSON() throws -> String {
