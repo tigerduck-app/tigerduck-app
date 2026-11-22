@@ -67,7 +67,8 @@ enum NTUSTScoreService {
     }
 
     /// Keeps a report no server sent, the demo account's, as if fetched now.
-    static func keep(_ report: ScoreReport, studentId: String, files: ScoreReportFiles = .shared) {
+    static func keep(_ report: ScoreReport, studentId: String, files: ScoreReportFiles = .shared, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
         files.saveScoreReport(report, studentId: studentId)
     }
 

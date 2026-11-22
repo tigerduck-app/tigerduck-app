@@ -81,7 +81,7 @@ struct DemoAccountTests {
             moodle: { MoodleCacheContext(account: $0, cache: cache.moodle, assignments: cache.assignments, signIn: $1) },
             keepBulletins: { BulletinFeed.keep($0, files: cache.bulletins, for: $1) },
             keepCourseChanges: courseChanges ?? { calls.courseChanges.append($0) },
-            keepScores: { ScoreReportFiles(folders: cache.folders).saveScoreReport($0, studentId: $1) },
+            keepScores: { NTUSTScoreService.keep($0, studentId: $1, files: ScoreReportFiles(folders: cache.folders), for: $2) },
             showClubs: { clubs, activities in
                 calls.clubs = clubs
                 calls.clubActivities = activities

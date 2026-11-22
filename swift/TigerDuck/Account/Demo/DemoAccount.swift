@@ -102,7 +102,7 @@ struct DemoAccount: AccountScoped {
         stores.keepCourseChanges((try? JSONEncoder().encode(changes)) ?? Data())
         let enrolled = (fixture.courses ?? []).compactMap(\.credits).reduce(0, +)
         if let scores = fixture.scores?.report(in: language, currentTerm: semester, enrolledCredits: enrolled) {
-            stores.keepScores(scores, fixture.normalizedStudentId)
+            stores.keepScores(scores, fixture.normalizedStudentId, signIn)
         }
         showClubs(of: fixture)
         for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
@@ -177,7 +177,9 @@ struct DemoStores {
         BulletinFeed.keep($0, for: $1)
     }
     var keepCourseChanges: (_ feed: Data) -> Void = { CourseChangeStore.shared.replaceFeed($0) }
-    var keepScores: (_ report: ScoreReport, _ studentId: String) -> Void = { NTUSTScoreService.keep($0, studentId: $1) }
+    var keepScores: (_ report: ScoreReport, _ studentId: String, _ signIn: SignIn) -> Void = {
+        NTUSTScoreService.keep($0, studentId: $1, for: $2)
+    }
     var showClubs: (_ clubs: [ClubCard], _ activities: [ClubActivity]) -> Void = {
         ClubDirectory.shared.show($0)
         ClubActivities.shared.show($1)

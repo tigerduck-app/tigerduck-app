@@ -79,6 +79,20 @@ struct DemoFeatureDataTests {
         #expect(shown.groupedCourses.map(\.term) == Array(earlier.reversed()))
     }
 
+    @Test("a transcript written for a demo sign-in that has ended is not kept")
+    func aTranscriptOfAnEndedSignInIsNotKept() throws {
+        let folder = DemoAccountTests.Folder()
+        let account = DemoAccountTests.account(folder)
+        let signIns = SignInSeries()
+        signIns.startDemo()
+        let ended = signIns.currentSignIn
+        signIns.end()
+
+        account.write(try #require(account.fixture), for: ended)
+
+        #expect(ScoreReportFiles(folders: folder.cache.folders).loadScoreReport(studentId: DemoAccountTests.studentId) == nil)
+    }
+
     @Test("from a Tuesday, Wednesday's club activity is this week's and Monday's is next week's")
     func clubsFillTheComingWeek() throws {
         let calls = DemoAccountTests.Calls()
