@@ -17,6 +17,9 @@ final class DebugClockController {
 
     func bootstrap() {
         guard let persisted = store.load() else { return }
+        // A `-debug.clock.override` launch argument reaches only this process; saved, it also
+        // reaches the widget and Live Activity extensions.
+        store.save(persisted)
         AppClock.setOverride(persisted)
         log.debug("Bootstrapped clock override: frozen=\(persisted.frozen, privacy: .public)")
     }
