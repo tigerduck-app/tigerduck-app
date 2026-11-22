@@ -37,8 +37,15 @@ struct MailMessageView: View {
         otherFolders: [String],
         events: MailboxEvents
     ) {
-        _viewModel = State(initialValue: MailMessageViewModel(route: route, session: session, folderRoles: folderRoles, events: events))
-        self.session = session
+        self.init(
+            viewModel: MailMessageViewModel(route: route, session: session, folderRoles: folderRoles, events: events),
+            otherFolders: otherFolders
+        )
+    }
+
+    init(viewModel: MailMessageViewModel, otherFolders: [String] = []) {
+        _viewModel = State(initialValue: viewModel)
+        session = viewModel.session
         self.otherFolders = otherFolders
     }
 
