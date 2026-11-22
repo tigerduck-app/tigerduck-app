@@ -4,7 +4,6 @@ struct ScoreView: View {
     var embedded = false
 
     @Environment(AppEnvironment.self) private var app
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var viewModel = ScoreViewModel()
     @State private var selectedCourse: CourseGrade?
 
@@ -52,7 +51,7 @@ struct ScoreView: View {
                     )
                     .padding(.vertical, TigerDuckTheme.Spacing.xxl)
                 case .content:
-                    authenticatedContent
+                    ScoreTranscript(viewModel: viewModel, policy: app.preferences.visualStylePolicy) { selectedCourse = $0 }
                 }
             }
             .padding(.bottom, TigerDuckTheme.Spacing.xxl)
@@ -83,22 +82,27 @@ struct ScoreView: View {
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
         .padding(.top, TigerDuckTheme.Spacing.md)
     }
+}
 
-    @ViewBuilder
-    private var authenticatedContent: some View {
-        StudentHeaderCard(
-            student: viewModel.report.student,
-            currentTerm: viewModel.report.currentTerm
-        )
+struct ScoreTranscript: View {
+    let viewModel: ScoreViewModel
+    let policy: VisualStylePolicy
+    let onCourseTap: (CourseGrade) -> Void
 
-        CreditSummaryBento(summary: viewModel.report.creditSummary)
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        StudentHeaderCard(student: viewModel.report.student, currentTerm: viewModel.report.currentTerm, policy: policy)
+
+        CreditSummaryBento(summary: viewModel.report.creditSummary, policy: policy)
 
         RankingsTrendCard(
             points: viewModel.gpaTrend,
             scope: Binding(
                 get: { viewModel.rankingScope },
                 set: { viewModel.rankingScope = $0 }
-            )
+            ),
+            policy: policy
         )
 
         LazyVStack(spacing: TigerDuckTheme.Spacing.md) {
@@ -108,12 +112,13 @@ struct ScoreView: View {
                     courses: group.courses,
                     gpaPoint: viewModel.gpaPoint(for: group.term),
                     isCollapsed: viewModel.isCollapsed(term: group.term),
+                    policy: policy,
                     onToggle: {
                         withAnimation(reduceMotion ? nil : .smoothSpring) {
                             viewModel.toggleCollapse(term: group.term)
                         }
                     },
-                    onCourseTap: { selectedCourse = $0 }
+                    onCourseTap: onCourseTap
                 )
             }
         }

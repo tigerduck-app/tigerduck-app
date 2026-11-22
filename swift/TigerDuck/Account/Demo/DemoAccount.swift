@@ -95,6 +95,10 @@ struct DemoAccount: AccountScoped {
         stores.keepBulletins((fixture.bulletins ?? []).enumerated().map { $1.detail(index: $0) }, signIn)
         let changes = CourseChangesDTO(term: semester, changes: (fixture.courseChanges ?? []).map { $0.row(from: now()) })
         stores.keepCourseChanges((try? JSONEncoder().encode(changes)) ?? Data())
+        let enrolled = (fixture.courses ?? []).compactMap(\.credits).reduce(0, +)
+        if let scores = fixture.scores?.report(in: language, currentTerm: semester, enrolledCredits: enrolled) {
+            stores.keepScores(scores, fixture.normalizedStudentId)
+        }
         for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
     }
 
@@ -152,6 +156,7 @@ struct DemoStores {
         BulletinFeed.keep($0, for: $1)
     }
     var keepCourseChanges: (_ feed: Data) -> Void = { CourseChangeStore.shared.replaceFeed($0) }
+    var keepScores: (_ report: ScoreReport, _ studentId: String) -> Void = { NTUSTScoreService.keep($0, studentId: $1) }
     var turnOffSync: (SignIn) -> Void = { CloudSyncPreference.turnOffForDemo($0) }
     var libraryIsKept: () -> Bool = { LibraryService.storedUsername != nil }
     var signInLibrary: (_ username: String, _ password: String) -> Void = {

@@ -1,10 +1,9 @@
 import SwiftUI
 
 struct RankingsTrendCard: View {
-    @Environment(AppEnvironment.self) private var app
-
     let points: [GPATrendPoint]
     @Binding var scope: ScoreViewModel.RankingScope
+    let policy: VisualStylePolicy
 
     var body: some View {
         VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
@@ -21,7 +20,7 @@ struct RankingsTrendCard: View {
             }
         }
         .padding(TigerDuckTheme.Spacing.md)
-        .presetCard(policy: app.preferences.visualStylePolicy)
+        .presetCard(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 

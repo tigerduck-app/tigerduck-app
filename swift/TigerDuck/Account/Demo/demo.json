@@ -295,6 +295,64 @@
     { "id": 4, "courseNo": "EE2004301", "kind": "note", "weekday": 4, "periods": ["8"], "note": { "zh": "補課", "en": "Make-up class" } }
   ],
 
+  "scores": {
+    "student": { "zh": "示範同學", "en": "Demo Student" },
+    "terms": [
+      {
+        "termsAgo": 4,
+        "semester": { "classRank": 8, "deptRank": 15, "gpa": 3.85 },
+        "cumulative": { "classRank": 8, "deptRank": 15, "gpa": 3.85 },
+        "courses": [
+          { "code": "MA1001301", "name": { "zh": "微積分（一）", "en": "Calculus (I)" }, "credits": 3, "grade": "A-" },
+          { "code": "PH1003301", "name": { "zh": "普通物理（一）", "en": "General Physics (I)" }, "credits": 3, "grade": "B+" },
+          { "code": "CS1001301", "name": { "zh": "計算機概論", "en": "Introduction to Computer Science" }, "credits": 3, "grade": "A+" },
+          { "code": "CS1002301", "name": { "zh": "程式設計（一）", "en": "Programming (I)" }, "credits": 3, "grade": "A" },
+          { "code": "FL1001301", "name": { "zh": "英文（一）", "en": "English (I)" }, "credits": 2, "grade": "A" },
+          { "code": "PE1001301", "name": { "zh": "體育（一）", "en": "Physical Education (I)" }, "credits": 0, "grade": "通過", "status": "passed" }
+        ]
+      },
+      {
+        "termsAgo": 3,
+        "semester": { "classRank": 14, "deptRank": 27, "gpa": 3.59 },
+        "cumulative": { "classRank": 10, "deptRank": 19, "gpa": 3.71 },
+        "courses": [
+          { "code": "MA1002301", "name": { "zh": "微積分（二）", "en": "Calculus (II)" }, "credits": 3, "grade": "B+" },
+          { "code": "CS1003301", "name": { "zh": "程式設計（二）", "en": "Programming (II)" }, "credits": 3, "grade": "A" },
+          { "code": "CS1004301", "name": { "zh": "離散數學", "en": "Discrete Mathematics" }, "credits": 3, "grade": "A-" },
+          { "code": "EE1001301", "name": { "zh": "數位邏輯", "en": "Digital Logic" }, "credits": 3, "grade": "B" },
+          { "code": "FL1002301", "name": { "zh": "英文（二）", "en": "English (II)" }, "credits": 2, "grade": "A-" },
+          { "code": "GE1101301", "name": { "zh": "台灣歷史與文化", "en": "Taiwanese History and Culture" }, "credits": 2, "grade": "A" },
+          { "code": "PE1002301", "name": { "zh": "體育（二）", "en": "Physical Education (II)" }, "credits": 0, "grade": "通過", "status": "passed" }
+        ]
+      },
+      {
+        "termsAgo": 2,
+        "semester": { "classRank": 6, "deptRank": 11, "gpa": 3.89 },
+        "cumulative": { "classRank": 7, "deptRank": 13, "gpa": 3.77 },
+        "courses": [
+          { "code": "CS2001301", "name": { "zh": "計算機組織", "en": "Computer Organization" }, "credits": 3, "grade": "B+" },
+          { "code": "CS2002301", "name": { "zh": "物件導向程式設計", "en": "Object-Oriented Programming" }, "credits": 3, "grade": "A+" },
+          { "code": "MA2003301", "name": { "zh": "機率與統計", "en": "Probability and Statistics" }, "credits": 3, "grade": "A-" },
+          { "code": "CS2006301", "name": { "zh": "資料庫系統", "en": "Database Systems" }, "credits": 3, "grade": "A" },
+          { "code": "GE1205301", "name": { "zh": "音樂欣賞", "en": "Music Appreciation" }, "credits": 2, "grade": "A+" }
+        ]
+      },
+      {
+        "termsAgo": 1,
+        "semester": { "classRank": 12, "deptRank": 22, "gpa": 3.57 },
+        "cumulative": { "classRank": 9, "deptRank": 16, "gpa": 3.72 },
+        "courses": [
+          { "code": "CS2003301", "name": { "zh": "演算法", "en": "Algorithms" }, "credits": 3, "grade": "A-" },
+          { "code": "CS2004301", "name": { "zh": "軟體工程", "en": "Software Engineering" }, "credits": 3, "grade": "B+" },
+          { "code": "CS2005301", "name": { "zh": "系統程式", "en": "System Programming" }, "credits": 3, "grade": "A" },
+          { "code": "MA2004301", "name": { "zh": "工程數學", "en": "Engineering Mathematics" }, "credits": 3, "grade": "B" },
+          { "code": "FL2001301", "name": { "zh": "英文簡報", "en": "English Presentations" }, "credits": 2, "grade": "A" },
+          { "code": "SL1001301", "name": { "zh": "服務學習", "en": "Service Learning" }, "credits": 0, "grade": "通過", "status": "passed" }
+        ]
+      }
+    ]
+  },
+
   "moodle": {
     "ownMemberId": 9001,
     "courses": [

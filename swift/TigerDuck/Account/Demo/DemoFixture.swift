@@ -13,13 +13,14 @@ nonisolated struct DemoFixture: Decodable, Sendable {
     let bulletins: [Bulletin]?
     let calendar: [CalendarEntry]?
     let courseChanges: [CourseChange]?
+    let scores: Scores?
     let moodle: DemoMoodle?
     let emptyClassroom: DemoClassrooms?
     let informationSystem: [PortalEntry]?
 
     enum CodingKeys: String, CodingKey {
         case studentId, libraryQr, courses, classmates, assignments, bulletins, calendar, moodle, emptyClassroom
-        case informationSystem, courseChanges
+        case informationSystem, courseChanges, scores
         case schoolPassword = "school-password"
         case libraryPassword = "library-password"
     }
@@ -84,6 +85,34 @@ nonisolated struct DemoFixture: Decodable, Sendable {
         let start: String?
         let end: String?
         let note: DemoText?
+    }
+
+    /// The transcript of the regular terms before the current one, `termsAgo` counting back from it.
+    struct Scores: Decodable, Sendable {
+        struct Rank: Decodable, Sendable {
+            let classRank: Int?
+            let deptRank: Int?
+            let gpa: Double?
+        }
+
+        struct Term: Decodable, Sendable {
+            let termsAgo: Int
+            let semester: Rank?
+            let cumulative: Rank?
+            let courses: [Course]?
+        }
+
+        /// `status` is a `GradeStatus`, `graded` when left out.
+        struct Course: Decodable, Sendable {
+            let code: String
+            let name: DemoText
+            let credits: Double?
+            let grade: String
+            let status: String?
+        }
+
+        let student: DemoText?
+        let terms: [Term]?
     }
 
     /// `category` is the portal block's id, `service-1` to `service-6`.

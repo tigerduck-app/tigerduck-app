@@ -48,6 +48,41 @@ extension DemoFixture.CourseChange {
     }
 }
 
+extension DemoFixture.Scores {
+    /// Earned credits are those of every listed course, and enrolled ones those of the current term.
+    func report(in language: DemoLanguage, currentTerm: String, enrolledCredits: Double) -> ScoreReport? {
+        guard let current = AcademicTerm(code: currentTerm) else { return nil }
+        let placed = (terms ?? []).map { term in
+            (term, (0..<term.termsAgo).reduce(current) { later, _ in later.previousRegular }.code)
+        }
+        let rankings = placed.compactMap { term, code in
+            term.semester.map { SemesterRanking(term: code, semester: $0.stats, cumulative: (term.cumulative ?? $0).stats) }
+        }
+        let courses = placed.flatMap { term, code in
+            (term.courses ?? []).enumerated().map { index, course in
+                CourseGrade(
+                    index: index + 1, term: code, code: course.code, name: course.name.text(in: language),
+                    credits: course.credits, creditType: .normal, grade: course.grade,
+                    status: course.status.flatMap(GradeStatus.init(rawValue:)) ?? .graded, remark: "",
+                    geDimension: nil, distanceLearning: false
+                )
+            }
+        }
+        let earned = courses.compactMap(\.credits).reduce(0, +)
+        func inPerson(_ credits: Double) -> CreditBreakdown { CreditBreakdown(inPerson: credits, distance: 0, total: credits) }
+        return ScoreReport(
+            student: student?.text(in: language) ?? "", currentTerm: currentTerm, rankings: rankings, courses: courses,
+            creditSummary: CreditSummary(
+                earned: inPerson(earned), enrolled: inPerson(enrolledCredits), total: inPerson(earned + enrolledCredits)
+            )
+        )
+    }
+}
+
+private extension DemoFixture.Scores.Rank {
+    var stats: RankingStats { RankingStats(classRank: classRank, deptRank: deptRank, gpa: gpa) }
+}
+
 extension DemoFixture.Bulletin {
     func detail(index: Int) -> BulletinAPI.BulletinDetail {
         let id = self.id ?? index + 1

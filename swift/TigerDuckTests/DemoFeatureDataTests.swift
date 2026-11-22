@@ -49,6 +49,36 @@ struct DemoFeatureDataTests {
         #expect(changes.days(courseNo: "CS3204301") == [try Self.day("2026-11-26")])
     }
 
+    @Test("the demo's transcript fills the score cache with the four regular terms before the current one")
+    func transcriptFillsTheScoreCache() throws {
+        let folder = DemoAccountTests.Folder()
+        let account = DemoAccountTests.account(folder)
+        let current = CourseSelectionService.currentSemesterCode()
+        let earlier = (1...4).reduce(into: [try #require(AcademicTerm(code: current))]) { terms, _ in
+            terms.append(terms[terms.count - 1].previousRegular)
+        }.dropFirst().map(\.code).reversed()
+
+        account.write(try #require(account.fixture), for: DemoAccountTests.demoSignIn())
+        let files = ScoreReportFiles(folders: folder.cache.folders)
+        let report = try #require(files.loadScoreReport(studentId: DemoAccountTests.studentId)).report
+
+        #expect(report.student == "Demo Student")
+        #expect(report.currentTerm == current)
+        #expect(report.rankings.map(\.term) == Array(earlier))
+        #expect(Set(report.courses.map(\.term)) == Set(earlier))
+        #expect(report.courses.count == 24)
+        #expect(report.creditSummary.earned.total == 58)
+        #expect(report.creditSummary.enrolled.total == 12)
+        #expect(GPATrendPoint.trend(for: report).map(\.semester.gpa) == [3.85, 3.59, 3.89, 3.57])
+
+        let shown = ScoreViewModel(
+            reports: ScoreReports(stored: { NTUSTScoreService.cachedScoreReport(studentId: $0, files: files) })
+        )
+        shown.showCachedReport(for: DemoAccountTests.studentId)
+        #expect(shown.hasContent)
+        #expect(shown.groupedCourses.map(\.term) == Array(earlier.reversed()))
+    }
+
     @Test("the demo's course changes stay through a refresh, which sends nothing, and leaving the demo drops them")
     func courseChangesNeedNoRequest() async throws {
         try await withExclusiveRealDefaults {

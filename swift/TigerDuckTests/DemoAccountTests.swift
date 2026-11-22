@@ -77,6 +77,7 @@ struct DemoAccountTests {
             moodle: { MoodleCacheContext(account: $0, cache: cache.moodle, assignments: cache.assignments, signIn: $1) },
             keepBulletins: { BulletinFeed.keep($0, files: cache.bulletins, for: $1) },
             keepCourseChanges: courseChanges ?? { calls.courseChanges.append($0) },
+            keepScores: { ScoreReportFiles(folders: cache.folders).saveScoreReport($0, studentId: $1) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
             libraryIsKept: { false },
             signInLibrary: { username, _ in calls.library.append(username) }
@@ -90,7 +91,8 @@ struct DemoAccountTests {
         let raw = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(raw.keys) == [
             "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
-            "assignments", "bulletins", "calendar", "courseChanges", "moodle", "emptyClassroom", "informationSystem",
+            "assignments", "bulletins", "calendar", "courseChanges", "scores", "moodle", "emptyClassroom",
+            "informationSystem",
         ])
 
         let fixture = try #require(DemoFixture.load(from: .main))
@@ -254,6 +256,7 @@ struct DemoAccountTests {
         #expect(folder.cache.bulletins.loadBulletinSummaries().isEmpty)
         #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
         #expect(folder.cache.moodle.loadEnrolledMoodleCourseIds().isEmpty)
+        #expect(ScoreReportFiles(folders: folder.cache.folders).loadScoreReport(studentId: Self.studentId) == nil)
     }
 
     @Test("a launch behind the lock screen resumes the demo sign-in, and a classmate removed stays removed")
