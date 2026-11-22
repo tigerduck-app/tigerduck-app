@@ -146,6 +146,65 @@ struct DemoScreensTests {
         }
     }
 
+    @Test("the demo's home lists today's classes and the assignments due in the coming days", arguments: looks)
+    func home(look: ClubScreensTests.Look) async throws {
+        try await withAccessibilityAutomation {
+            let folder = DemoAccountTests.Folder()
+            let account = DemoAccountTests.account(folder)
+            account.write(try #require(account.fixture), for: DemoAccountTests.demoSignIn())
+            let courses = CanonicalCourseProvider(courses: folder.cache.courses).currentCourses()
+            let due = folder.cache.assignments.loadAssignments().ofTimetable(courses).upcomingSorted()
+            #expect(due.map(\.title) == ["Homework 3: Balanced Binary Trees", "Lab 2: Process Scheduling"])
+
+            let screen = ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    TodayCourseCarousel(
+                        courses: courses.coursesForToday(), hasAssignment: { no in due.contains { $0.courseNo == no } }
+                    )
+                    UpcomingAssignmentsView(assignments: due, policy: VisualStylePolicy(preset: .default), courses: courses)
+                }
+                .padding(.vertical, TigerDuckTheme.Spacing.md)
+            }
+            .background(Color.backgroundPrimary)
+            .environment(AppPreferences())
+            let window = try ClubScreensTests.show(screen, look: look, height: 1000)
+            defer { window.isHidden = true }
+            try await waitUntil { exposedAccessibilityTexts(in: window).contains { $0.contains("Lab 2: Process Scheduling") } }
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: Self.name("home", look))
+        }
+    }
+
+    @Test("the demo's calendar shows this month with today's deadline", arguments: looks)
+    func calendar(look: ClubScreensTests.Look) async throws {
+        try await withAccessibilityAutomation {
+            let folder = DemoAccountTests.Folder()
+            let account = DemoAccountTests.account(folder)
+            let signIn = DemoAccountTests.demoSignIn()
+            account.write(try #require(account.fixture), for: signIn)
+            let context = account.stores.moodle(DemoAccountTests.studentId, signIn)
+            let model = CalendarViewModel(assignments: folder.cache.assignments, courses: folder.cache.courses)
+            model.load { context }
+            let today = model.eventsForSelectedDate
+            #expect(today.map(\.title) == ["Homework 3: Balanced Binary Trees"])
+
+            let screen = ScrollView {
+                VStack(spacing: TigerDuckTheme.Spacing.lg) {
+                    MonthCalendarView(viewModel: model)
+                    Divider()
+                    DayEventListView(date: model.selectedDate, events: today, assignment: model.assignment(for:))
+                }
+            }
+            .background(Color.backgroundPrimary)
+            .environment(AppPreferences())
+            let window = try ClubScreensTests.show(screen, look: look, height: 1000)
+            defer { window.isHidden = true }
+            try await waitUntil { ClubScreensTests.shows(MonthCalendarView.title(of: model.displayedMonth), in: window) }
+            try await Task.sleep(for: .milliseconds(400))
+            window.saveSnapshot(as: Self.name("calendar", look))
+        }
+    }
+
     @Test("Data Structures lists its staff, auditor and students", arguments: looks)
     func members(look: ClubScreensTests.Look) async throws {
         try await withAccessibilityAutomation {
