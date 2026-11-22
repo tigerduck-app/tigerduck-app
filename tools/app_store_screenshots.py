@@ -56,8 +56,9 @@ LIVE_ACTIVITY = ("test10LiveActivityLockScreen", "test11LiveActivityDynamicIslan
 # https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications
 DEVICES = (
     Device("iphone-18-pro", "iPhone 18 Pro", "iOS", frozenset({(1206, 2622)})),
-    # The simulator opens on the cover screen, which shows the running Live Activity neither on the
-    # Lock Screen nor beside the status bar, and simctl cannot unfold it.
+    # The simulator shows only its cover screen, where the running Live Activity appears neither on
+    # the Lock Screen nor beside the status bar. Xcode has no control that unfolds it, and with the
+    # cover display powered off (`simctl io screenConfig`) SpringBoard crashes at every launch.
     Device("iphone-duo", "iPhone Duo", "iOS", frozenset({(1398, 2034), (2007, 2853)}), LIVE_ACTIVITY),
     Device("ipad-pro-13", "iPad Pro 13-inch (M5)", "iOS", frozenset({(2064, 2752)}), (
         "test08Calendar", "test09LibraryQR", *LIVE_ACTIVITY, "test12EmptyClassrooms", "test13Clubs",
