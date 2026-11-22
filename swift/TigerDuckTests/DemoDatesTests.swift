@@ -65,6 +65,39 @@ struct DemoDatesTests {
         }
     }
 
+    @Test("the bundled fixture and the demo mail are moved by the same days")
+    func theMailAndTheRestMoveAlike() throws {
+        func gap(_ fixture: DemoFixture?, _ mail: MailDemoFixture?) throws -> TimeInterval {
+            let due = try #require(fixture?.assignments?.first?.assignment(in: .en)?.dueDate)
+            return due.timeIntervalSince(try #require(mail?.folders.values.flatMap { $0.map(\.date) }.max()))
+        }
+        let today = try Self.day(Self.days[0])
+
+        let bundled = try gap(DemoFixture.bundled, MailDemoFixture.shared)
+        let loaded = try gap(DemoFixture.load(from: .main, today: today), MailDemoFixture.load(from: .main, today: today))
+
+        #expect(bundled == loaded)
+    }
+
+    @Test("every string the shift moves in demo.json reads as a date")
+    func theShiftMovesOnlyDates() throws {
+        func moved(_ old: Any, _ new: Any) -> [String] {
+            switch (old, new) {
+            case let (old as String, new as String): old == new ? [] : [old]
+            case let (old as [Any], new as [Any]): zip(old, new).flatMap { moved($0, $1) }
+            case let (old as [String: Any], new as [String: Any]): old.flatMap { key, value in new[key].map { moved(value, $0) } ?? [] }
+            default: []
+            }
+        }
+        let raw = try Data(contentsOf: try #require(Bundle.main.url(forResource: "demo", withExtension: "json")))
+        let shifted = DemoTime.shifted(raw, to: try Self.day(Self.days[0]))
+
+        let changed = moved(try JSONSerialization.jsonObject(with: raw), try JSONSerialization.jsonObject(with: shifted))
+
+        #expect(changed.count > 40)
+        #expect(changed.filter { DemoTime.date($0) == nil } == [])
+    }
+
     @Test("a day just before Taipei's midnight and one just after move the anchor to their own days")
     func theShiftFollowsTaipeiDays() throws {
         let json = Data(#"{"anchor":"2026-10-15","due":"2026-10-15T08:00","list":["2026-10-14","B11308964"]}"#.utf8)

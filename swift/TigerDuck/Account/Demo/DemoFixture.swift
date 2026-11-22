@@ -153,7 +153,7 @@ nonisolated struct DemoFixture: Decodable, Sendable {
     }
 
     /// Its dates are moved so that `anchor` falls on `today`, as `DemoTime.shifted` does.
-    static func load(from bundle: Bundle, today: Date = AppClock.now()) -> DemoFixture? {
+    static func load(from bundle: Bundle, today: Date = DemoTime.bundledDay) -> DemoFixture? {
         guard let url = bundle.url(forResource: "demo", withExtension: "json") else { return nil }
         do {
             return try JSONDecoder().decode(DemoFixture.self, from: DemoTime.shifted(Data(contentsOf: url), to: today))
@@ -212,6 +212,10 @@ nonisolated struct DemoText: Decodable, Sendable {
 
 nonisolated enum DemoTime {
     private static let localFormats = ["yyyy-MM-dd'T'HH:mm:ss", "yyyy-MM-dd'T'HH:mm", "yyyy-MM-dd"]
+
+    /// The day the bundled fixture and the demo mail are moved to, read once a launch so that both
+    /// move alike whenever each is first read.
+    static let bundledDay = AppClock.now()
 
     /// `json` with every string that starts with a `yyyy-MM-dd` day moved by whole days, so that its
     /// top-level `anchor` day falls on `today`'s day in Taipei. Weekdays are not kept: what is bound
