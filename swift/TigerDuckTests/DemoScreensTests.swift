@@ -108,7 +108,7 @@ struct DemoScreensTests {
                 let sheet = ClubSubscribeSheet(signIn: testSignIn, directory: clubs.directory, subscriptions: clubs.subscriptions)
                 let window = try ClubScreensTests.show(sheet, look: look, height: 900)
                 defer { window.isHidden = true }
-                try await waitUntil { ClubScreensTests.shows("Information Security Club", in: window) }
+                try await waitUntil { ClubScreensTests.shows("Cyber Security Research Club", in: window) }
                 try await Task.sleep(for: .milliseconds(400))
                 window.saveSnapshot(as: Self.name("clubs", look))
 
@@ -159,7 +159,7 @@ struct DemoScreensTests {
                 api: MoodleCourseAPI.demo(moodle)
             )
             await store.refreshMembers()
-            #expect(store.members.value?.members.count == 19)
+            #expect(store.members.value?.members.count == 20)
 
             let list = NavigationStack {
                 MoodleMembersView(store: store, policy: VisualStylePolicy(preset: .default)) { _ in }

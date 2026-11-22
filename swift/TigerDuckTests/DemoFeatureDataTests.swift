@@ -111,7 +111,7 @@ struct DemoFeatureDataTests {
 
         #expect(calls.clubs.map(\.name) == ["開源技術開發研究社", "資訊安全研究社"])
         #expect(shown.map(\.day) == ["2026-11-25", "2026-11-30"])
-        #expect(shown.map(\.clubName) == ["Open Source Development Club", "Information Security Club"])
+        #expect(shown.map(\.clubName) == ["Open Source Technology Development Research Club", "Cyber Security Research Club"])
         #expect(calls.clubActivities.map(\.location) == ["TR-214", "TR-211"])
     }
 

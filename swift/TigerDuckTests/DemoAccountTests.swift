@@ -447,7 +447,7 @@ struct DemoAccountTests {
         let thread = try #require(try await api.discussions(forums[1].id, 0).first)
         #expect(try await !api.posts(thread.id).isEmpty)
         #expect(try await api.materials(90501).sections.count == 3)
-        #expect(try await api.members(90501).members.count == 19)
+        #expect(try await api.members(90501).members.count == 20)
         #expect(try await api.gradeItems(90501).count == 5)
         #expect(try await api.summary(90501).names.isEmpty == false)
 

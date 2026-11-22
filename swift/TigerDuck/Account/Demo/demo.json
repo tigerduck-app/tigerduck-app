@@ -356,7 +356,7 @@
   "clubs": [
     {
       "id": 990001,
-      "name": { "zh": "開源技術開發研究社", "en": "Open Source Development Club" },
+      "name": { "zh": "開源技術開發研究社", "en": "Open Source Technology Development Research Club" },
       "attribute": "學藝性",
       "subscribed": true,
       "activities": [
@@ -365,7 +365,7 @@
     },
     {
       "id": 990002,
-      "name": { "zh": "資訊安全研究社", "en": "Information Security Club" },
+      "name": { "zh": "資訊安全研究社", "en": "Cyber Security Research Club" },
       "attribute": "學藝性",
       "subscribed": true,
       "activities": [
@@ -954,6 +954,7 @@
             "role": "auditor_student",
             "idNumber": "B11309015"
           },
+          { "id": 9019, "name": { "zh": "B11315003 @ 派大星", "en": "B11315003 @ Pai Ta-Hsing" }, "role": "student", "idNumber": "B11315003", "email": "b11315003@mail.ntust.example" },
           { "id": 9007, "name": { "zh": "B11315012 @ 林冠宇", "en": "B11315012 @ Lin Kuan-Yu" }, "role": "student", "idNumber": "B11315012", "email": "b11315012@mail.ntust.example" },
           { "id": 9008, "name": { "zh": "B11315025 @ 吳佳穎", "en": "B11315025 @ Wu Chia-Ying" }, "role": "student", "idNumber": "B11315025", "email": "b11315025@mail.ntust.example" },
           { "id": 9009, "name": { "zh": "B11315033 @ 蔡承翰", "en": "B11315033 @ Tsai Cheng-Han" }, "role": "student", "idNumber": "B11315033", "email": "b11315033@mail.ntust.example" },
