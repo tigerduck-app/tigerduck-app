@@ -13,7 +13,7 @@ reused after, and both languages run on it in turn:
 The shots land in screenshots/<device>/<language>/<NN-name>.png. The app's clock and the status
 bar stand at 09:41 on Tuesday of the current Taipei week. Needs Xcode 27 (from
 `xcode-select -p` or DEVELOPER_DIR) with the iOS and watchOS simulators. Exits nonzero when a test
-fails or a PNG is not a size App Store Connect takes for its device; the tests that failed leave
+fails or a PNG is not its device's portrait size in DEVICES; the tests that failed leave
 <test>-failed.txt with the screen's accessibility tree beside the shots.
 """
 
@@ -49,7 +49,8 @@ class Device:
     sizes: frozenset[tuple[int, int]]
 
 
-# The portrait sizes App Store Connect takes for each device's screenshot slot.
+# The portrait sizes each simulator gives, among those App Store Connect takes for its slot:
+# https://developer.apple.com/help/app-store-connect/reference/screenshot-specifications
 DEVICES = (
     Device("iphone-18-pro", "iPhone 18 Pro", "iOS", frozenset({(1206, 2622)})),
     Device("iphone-duo", "iPhone Duo", "iOS", frozenset({(1398, 2034), (2007, 2853)})),
@@ -97,7 +98,7 @@ def size_problems(folder: Path, device: Device) -> list[str]:
         if size not in device.sizes:
             taken = ", ".join(f"{w}x{h}" for w, h in sorted(device.sizes))
             shown = "not a PNG" if size is None else f"{size[0]}x{size[1]}"
-            problems.append(f"{shot}: {shown}, App Store Connect takes {taken} for the {device.name}")
+            problems.append(f"{shot}: {shown}, not the {device.name}'s {taken}")
     return problems
 
 
@@ -137,7 +138,8 @@ def pair(watch: str, phone: str) -> None:
     for pair_id, found in simctl_json("pairs")["pairs"].items():
         if found["watch"]["udid"] == watch:
             if found["phone"]["udid"] == phone:
-                simctl("pair_activate", pair_id)
+                if not found["state"].startswith("(active"):
+                    simctl("pair_activate", pair_id)
                 return
             simctl("unpair", pair_id)
     simctl("pair", watch, phone)
@@ -164,8 +166,10 @@ def prepare(udid: str, device: Device, language: str, instant: datetime) -> None
     set_language(udid, language, LANGUAGES[language])
     if device.platform == "iOS":
         simctl("ui", udid, "appearance", "dark")
-        # An ISO date sets the date the iPad's status bar shows too.
-        simctl("status_bar", udid, "override", "--time", instant.isoformat(), *STATUS_BAR)
+        # simctl takes an ISO date only with milliseconds and an offset, and shows it in the Mac's
+        # time zone, which simulators follow; a date also sets the one the iPad's status bar shows.
+        shown = datetime.combine(instant.date(), instant.time()).astimezone()
+        simctl("status_bar", udid, "override", "--time", shown.isoformat(timespec="milliseconds"), *STATUS_BAR)
 
 
 def xcodebuild(arguments: list[str], log: Path, env: dict[str, str] | None = None) -> bool:
