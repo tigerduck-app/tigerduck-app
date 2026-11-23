@@ -299,6 +299,13 @@
 			);
 			target = B21DC6912FB887D900AE2430 /* TigerDuckWatch Watch App */;
 		};
+		DC0DE00730AA000100000001 /* Exceptions for "TigerDuckUITests" folder in "TigerDuckWatch Watch AppUITests" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				DemoFixture.swift,
+			);
+			target = B21DC6A72FB887DA00AE2430 /* TigerDuckWatch Watch AppUITests */;
+		};
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -324,6 +331,9 @@
 		};
 		424C46722F6E763E009D1DDA /* TigerDuckUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				DC0DE00730AA000100000001 /* Exceptions for "TigerDuckUITests" folder in "TigerDuckWatch Watch AppUITests" target */,
+			);
 			path = TigerDuckUITests;
 			sourceTree = "<group>";
 		};
@@ -585,6 +595,7 @@
 			buildPhases = (
 				424C466B2F6E763E009D1DDA /* Sources */,
 				424C466C2F6E763E009D1DDA /* Frameworks */,
+				DC0DE00430AA000100000006 /* Generate Localizations */,
 				424C466D2F6E763E009D1DDA /* Resources */,
 			);
 			buildRules = (
@@ -1049,6 +1060,29 @@
 			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
 		};
 		DC0DE00430AA000100000005 /* Generate Localizations */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/../tools/localization/build_apple_lproj.sh",
+				"$(SRCROOT)/../app-translation/tools/localization/generate_localizations.py",
+				"$(SRCROOT)/../app-translation/config",
+				"$(SRCROOT)/../app-translation/source",
+			);
+			name = "Generate Localizations";
+			outputFileListPaths = (
+				"$(SRCROOT)/../tools/localization/apple-lproj.xcfilelist",
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "exec /bin/sh \"${SRCROOT}/../tools/localization/build_apple_lproj.sh\"\n";
+		};
+		DC0DE00430AA000100000006 /* Generate Localizations */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
 			files = (

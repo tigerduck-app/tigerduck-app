@@ -50,6 +50,9 @@ python3 tools/generate_app_icon_previews.py --check
 python3 -m unittest discover -s tools -p 'test_*.py'
 ```
 
+`python3 tools/app_store_screenshots.py` takes the App Store screenshots from the demo account in
+simulators (about 45 minutes); CI runs it when a `v*` tag on main is pushed.
+
 Without `OS=`, xcodebuild picks the newest installed runtime, which may not have that device
 (`xcrun simctl list devices available`). Run one `xcodebuild` at a time; two at once compete for
 the same build folder.
