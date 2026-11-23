@@ -69,7 +69,8 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
   the outcome it asserts, not for the motion to end.
 - A CI job, checker or script change is tried against its bypasses: a renamed or commented-out
   target, a non-ASCII path, a docs-only commit pushed after a code commit. A new macOS job uses
-  the Xcode the phone job uses, checked against the runner image's README.
+  the Xcode the phone job uses, checked against the runner image's README. A script resolves a
+  path argument before handing it to another process, such as a simulator's test runner.
 - No checker failure is "already on dev": run `tools/localization/check_keys.py` and the other
   `check_*.py` scripts on the branch, and fix what they report. A `LocalizedStringResource`
   property named like an argument label (`title`, `label`) makes `check_keys.py` read every
@@ -92,7 +93,7 @@ a parser of outside input:
 ## 7. Rules, comments, docs and UI
 
 - The nearest `AGENTS.md` files, for example: no new responsibility on `AppState`; upgrade code
-  only in `Migrations/`.
+  only in `Migrations/`; raw `UserDefaults` only through `AppUserDefaults`, DEBUG code included.
 - A height measured from web content counts text that overflows a fixed-size box, and still
   shrinks when the content gets shorter.
 - Comments: run `python3 tools/check_comments.py check --base origin/dev`, then reread each new

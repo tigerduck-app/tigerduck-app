@@ -4,6 +4,9 @@ swift/buildServer.json
 .idea/
 .sisyphus/
 
+# What tools/app_store_screenshots.py writes.
+/screenshots/
+
 # Per-developer Debug settings (the DebugServerURL backend override). The
 # .example counterpart is committed as a template.
 swift/TigerDuck/Secrets.plist
