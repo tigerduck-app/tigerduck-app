@@ -43,17 +43,17 @@ final class ServerStatusTracker {
 
     var statuses: [ServerKind: ServerStatus] = [:]
     private(set) var notes: [ServerKind: String] = [:]
-    @ObservationIgnored private var demoSignIn: SignIn?
+    @ObservationIgnored private var isDemo = SignInBound(empty: false)
 
     /// The demo's data is the bundled file's, and `DemoRequestRefusal` refuses its every request,
     /// so while `signIn` is current every source reads ok and a failure is no server's.
     func showDemo(for signIn: SignIn) {
-        demoSignIn = signIn
+        isDemo.set(true, for: signIn)
         for server in ServerKind.allCases { set(.ok, for: server) }
     }
 
     func set(_ status: ServerStatus, for server: ServerKind, note: String? = nil) {
-        let isDemoRefusal = status == .failed && demoSignIn?.isCurrent == true
+        let isDemoRefusal = status == .failed && isDemo.value
         statuses[server] = isDemoRefusal ? .ok : status
         notes[server] = isDemoRefusal ? nil : note
     }
@@ -83,7 +83,6 @@ final class ServerStatusTracker {
     func reset() {
         statuses.removeAll()
         notes.removeAll()
-        demoSignIn = nil
     }
 }
 
