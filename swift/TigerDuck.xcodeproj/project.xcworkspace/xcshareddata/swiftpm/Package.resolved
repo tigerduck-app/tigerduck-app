@@ -51,8 +51,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-log.git",
       "state" : {
-        "revision" : "e3da04078777e6a1b72ce19981fbd6539b0847d8",
-        "version" : "1.17.0"
+        "revision" : "c7413d967b97aae67c46452bf7645bdb7b200e8e",
+        "version" : "1.17.2"
       }
     },
     {
@@ -78,8 +78,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://github.com/apple/swift-nio-imap",
       "state" : {
-        "revision" : "d67f1243f731457cb9f2eb0beb27eff9e533bf7b",
-        "version" : "0.4.0"
+        "revision" : "a136f54cf8bfc996103219ebdf34434f0fbc9311",
+        "version" : "0.5.0"
       }
     },
     {
