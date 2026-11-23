@@ -231,6 +231,8 @@ def build(scheme: str, udid: str, derived_data: Path, logs: Path) -> Path:
     if not xcodebuild(arguments, logs / f"build-{scheme}.log"):
         sys.exit(1)
     runs = sorted((derived_data / "Build/Products").glob(f"{scheme}_*.xctestrun"), key=lambda p: p.stat().st_mtime)
+    if not runs:
+        sys.exit(f"building {scheme} wrote no .xctestrun; see {logs / f'build-{scheme}.log'}")
     return runs[-1]
 
 
@@ -251,7 +253,8 @@ def launch_phone_app(udid: str, clock: str) -> None:
     env = {**os.environ, "SIMCTL_CHILD_TZ": "Asia/Taipei"}
     run([
         "xcrun", "simctl", "launch", "--terminate-running-process", udid, APP,
-        "-debug.clock.override", clock, "-debug.disableScreenCaptureProtection", "YES",
+        "-debug.clock.override", clock, "-debug.clock.shareWithExtensions", "YES",
+        "-debug.disableScreenCaptureProtection", "YES",
     ], env=env)
 
 

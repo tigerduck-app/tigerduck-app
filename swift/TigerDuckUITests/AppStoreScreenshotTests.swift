@@ -18,7 +18,7 @@ final class AppStoreScreenshotTests: XCTestCase {
         // password field then never takes keyboard focus.
         app.launchArguments += ["-debug.disableScreenCaptureProtection", "YES"]
         if let clock = environment["SCREENSHOTS_CLOCK"] {
-            app.launchArguments += ["-debug.clock.override", clock]
+            app.launchArguments += ["-debug.clock.override", clock, "-debug.clock.shareWithExtensions", "YES"]
         }
         app.launchEnvironment["TZ"] = "Asia/Taipei"
         app.launch()

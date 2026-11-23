@@ -10,6 +10,9 @@ final class DebugClockController {
 
     static let didChangeNotification = Notification.Name("AppClockDidChange")
 
+    /// The launch argument `-debug.clock.shareWithExtensions YES` that tools/app_store_screenshots.py passes.
+    static let shareWithExtensionsKey = "debug.clock.shareWithExtensions"
+
     private let store = DebugClockStore()
     private let log = Logger(subsystem: "org.ntust.app.TigerDuck", category: "DebugClock")
 
@@ -18,8 +21,8 @@ final class DebugClockController {
     func bootstrap() {
         guard let persisted = store.load() else { return }
         // A `-debug.clock.override` launch argument reaches only this process; saved, it also
-        // reaches the widget and Live Activity extensions.
-        store.save(persisted)
+        // reaches the widget and Live Activity extensions, and outlives the argument.
+        if UserDefaults.standard.bool(forKey: Self.shareWithExtensionsKey) { store.save(persisted) }
         AppClock.setOverride(persisted)
         log.debug("Bootstrapped clock override: frozen=\(persisted.frozen, privacy: .public)")
     }
