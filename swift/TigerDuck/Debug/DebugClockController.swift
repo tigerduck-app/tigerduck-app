@@ -22,7 +22,7 @@ final class DebugClockController {
         guard let persisted = store.load() else { return }
         // A `-debug.clock.override` launch argument reaches only this process; saved, it also
         // reaches the widget and Live Activity extensions, and outlives the argument.
-        if UserDefaults.standard.bool(forKey: Self.shareWithExtensionsKey) { store.save(persisted) }
+        if AppUserDefaults.standard.bool(forKey: Self.shareWithExtensionsKey) { store.save(persisted) }
         AppClock.setOverride(persisted)
         log.debug("Bootstrapped clock override: frozen=\(persisted.frozen, privacy: .public)")
     }

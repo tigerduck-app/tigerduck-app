@@ -264,7 +264,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--device", action="append", choices=[d.slug for d in DEVICES], help="default: every device")
     parser.add_argument("--language", action="append", choices=list(LANGUAGES), help="default: both")
-    parser.add_argument("--output", type=Path, default=OUTPUT)
+    parser.add_argument("--output", type=lambda value: Path(value).resolve(), default=OUTPUT)
     parser.add_argument("--derived-data", type=Path, default=DERIVED_DATA)
     args = parser.parse_args()
 
