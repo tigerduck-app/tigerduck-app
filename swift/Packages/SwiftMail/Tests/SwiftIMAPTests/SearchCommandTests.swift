@@ -119,4 +119,19 @@ struct SearchCommandTests {
         #expect(wire.contains("UID EXPUNGE"))
         #expect(wire.contains("10:30") || wire.contains("10,20,30"))
     }
+
+    @Test
+    func testInvalidSortCharsetFailsValidation() {
+        let charset = "UTF-8\r\nA2 LOGOUT"
+        let search = SearchCommand<UID>(
+            criteria: [.all], sortCriteria: [.descending(.date)], sortCharset: charset, useSort: true
+        )
+        let extended = ExtendedSearchCommand<UID>(
+            criteria: [.all], sortCriteria: [.descending(.date)], sortCharset: charset, useSort: true,
+            useEsearch: false
+        )
+
+        #expect(throws: IMAPError.self) { try search.validate() }
+        #expect(throws: IMAPError.self) { try extended.validate() }
+    }
 }

@@ -22,7 +22,7 @@ final class ListCommandHandler: BaseIMAPCommandHandler<[Mailbox.Info]>, IMAPComm
         let response = self.unwrapInboundIn(data)
 
         switch response {
-            case .tagged(let tagged) where tagged.tag == commandTag:
+            case .tagged(let tagged) where String(tagged.tag) == commandTag:
                 handleTaggedResponse(tagged)
                 context.pipeline.removeHandler(self, promise: nil)
             case .untagged(let untagged):

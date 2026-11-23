@@ -20,7 +20,7 @@ final class UnselectHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @
         let handled = super.processResponse(response)
 
         // Process the response
-        if case .tagged(let tagged) = response, tagged.tag == commandTag {
+        if case .tagged(let tagged) = response, String(tagged.tag) == commandTag {
             // This is our tagged response, handle it
             switch tagged.state {
                 case .ok:

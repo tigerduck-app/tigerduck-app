@@ -34,7 +34,7 @@ struct AppendCommand: IMAPCommand {
         let appendOptions = AppendOptions(flagList: nioFlags, internalDate: internalDate)
         let metadata = AppendMessage(options: appendOptions, data: AppendData(byteCount: messageBuffer.readableBytes))
 
-        channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: tag, appendingTo: mailbox))), promise: nil)
+        channel.write(IMAPClientHandler.OutboundIn.part(.append(.start(tag: Command.Tag(generated: tag), appendingTo: mailbox))), promise: nil)
         channel.write(IMAPClientHandler.OutboundIn.part(.append(.beginMessage(message: metadata))), promise: nil)
         // Flush APPEND metadata first so servers can respond with literal continuation.
         channel.flush()

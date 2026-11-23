@@ -30,7 +30,7 @@ struct PipelinedDispatcherContentRoutingTests {
     }
 
     private func taggedOK(_ tag: String) -> Response {
-        .tagged(TaggedResponse(tag: tag, state: .ok(ResponseText(text: "completed"))))
+        .tagged(TaggedResponse(tag: Command.Tag(generated: tag), state: .ok(ResponseText(text: "completed"))))
     }
 
     private func sectionSpec(_ components: [Int]) -> SectionSpecifier {

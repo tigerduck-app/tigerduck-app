@@ -237,7 +237,7 @@ extension Array where Element == MessagePart {
                 }
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatEnvelopeAddress($0) }.joined(separator: ", ")
+                let members = group.children.map { formatEnvelopeAddress(.singleAddress($0)) }.joined(separator: ", ")
                 return "\(groupName): \(members);"
         }
     }

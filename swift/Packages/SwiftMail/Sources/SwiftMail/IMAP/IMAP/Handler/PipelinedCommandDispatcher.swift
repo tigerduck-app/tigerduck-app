@@ -59,7 +59,7 @@ final class PipelinedCommandDispatcher: ChannelInboundHandler, RemovableChannelH
             switch response {
                 case .tagged(let taggedResponse):
                     // Route to the handler that owns this tag
-                    if let idx = entries.firstIndex(where: { $0.tag == taggedResponse.tag }) {
+                    if let idx = entries.firstIndex(where: { $0.tag == String(taggedResponse.tag) }) {
                         let handler = entries[idx].handler
                         handler.processTaggedResponse(taggedResponse)
                         entries.remove(at: idx)
