@@ -186,6 +186,10 @@ def set_language(udid: str, language: str, locale: str) -> None:
 
 
 def prepare(udid: str, device: Device, language: str, instant: datetime) -> None:
+    if device.platform == "iOS":
+        # Cleared only after a language's restart, an earlier override's date can stay.
+        boot(udid)
+        simctl("status_bar", udid, "clear")
     set_language(udid, language, LANGUAGES[language])
     if device.platform == "iOS":
         simctl("ui", udid, "appearance", "dark")
