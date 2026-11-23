@@ -11,10 +11,10 @@ enum SchoolRefresh {
         return true
     }
 
-    /// Not for the demo, whose every request `DemoRequestRefusal` refuses, the reachability probe's too.
+    /// The demo shows its bundled data as loaded, replacing an error an earlier account left, since
+    /// `DemoRequestRefusal` refuses its every request, the reachability probe's too.
     static func showOffline(for signIn: SignIn, on indicator: any LoadingIndicator = NTUSTSessionManager.shared) {
-        guard !signIn.isDemo else { return }
-        indicator.loadingState = .error(String(localized: "error_network_unavailable"))
+        indicator.loadingState = signIn.isDemo ? .loaded : .error(String(localized: "error_network_unavailable"))
     }
 
     static func end() {

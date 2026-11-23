@@ -73,7 +73,8 @@ struct ServerStatusSourcesTests {
         let demoSignIns = SignInSeries()
         demoSignIns.startDemo()
         let demo = Indicator()
+        demo.loadingState = .error(String(localized: "error_network_unavailable"))
         SchoolRefresh.showOffline(for: demoSignIns.currentSignIn, on: demo)
-        #expect(demo.loadingState == .idle)
+        #expect(demo.loadingState == .loaded)
     }
 }
