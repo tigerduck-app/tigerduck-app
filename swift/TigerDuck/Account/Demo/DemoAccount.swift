@@ -20,6 +20,7 @@ struct DemoAccount: AccountScoped {
         let signIn = session.startDemoSignIn()
         Defaults[stores.demoSignedIn, for: signIn] = true
         stores.turnOffSync(signIn)
+        stores.statuses.showDemo(for: signIn)
         return signIn
     }
 
@@ -74,10 +75,12 @@ struct DemoAccount: AccountScoped {
 
     /// Ends what the demo keeps outside the stores a sign-out clears, writing for `signIn`, the one
     /// after the demo's: the public course-change feed, its clubs, shown in memory, with their
-    /// subscriptions, its transcript, and the library and mail sign-ins it made. The clubs' unsent
-    /// mark is the demo's own only `afterCurrentDemo`. Each step can run again, and the demo stays
-    /// marked until the last, so the next launch's `resume` finishes an end cut short.
+    /// subscriptions, its transcript, the server statuses it marks ok, and the library and mail
+    /// sign-ins it made. The clubs' unsent mark and the server statuses are the demo's own only
+    /// `afterCurrentDemo`. Each step can run again, and the demo stays marked until the last, so the
+    /// next launch's `resume` finishes an end cut short.
     func leave(for signIn: SignIn, afterCurrentDemo: Bool) {
+        if afterCurrentDemo { stores.statuses.reset() }
         stores.keepCourseChanges(Data())
         stores.dropClubs((fixture?.clubs ?? []).map(\.id), afterCurrentDemo, signIn)
         if let fixture { stores.dropScores(fixture.normalizedStudentId) }
@@ -108,7 +111,6 @@ struct DemoAccount: AccountScoped {
             stores.keepScores(scores, fixture.normalizedStudentId, signIn)
         }
         showClubs(of: fixture)
-        for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
     }
 
     /// The clubs live in memory only, so a launch behind the lock screen, which writes nothing else,

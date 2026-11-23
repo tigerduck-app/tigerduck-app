@@ -37,6 +37,7 @@ For each state the diff writes, list every other way to reach it and give each o
 fails without the change:
 
 - sign-out or an account switch while an `await` is pending
+- a shared indicator or status the previous account left set, such as an error or a loading state
 - the sync switch turned off or on mid-flight
 - a retry and a duplicate submit
 - a second cache of the same data (another language, a fallback)
