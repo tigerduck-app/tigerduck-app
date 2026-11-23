@@ -29,6 +29,7 @@ import sys
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta, timezone
 from pathlib import Path
+from time import monotonic, sleep
 
 ROOT = Path(__file__).resolve().parents[1]
 PROJECT = ROOT / "swift" / "TigerDuck.xcodeproj"
@@ -185,6 +186,16 @@ def set_language(udid: str, language: str, locale: str) -> None:
     boot(udid)
 
 
+def wait_for_springboard(udid: str) -> None:
+    """Waits until SpringBoard has started: an override given before that shows only in part, as
+    searching cellular dots or the real date."""
+    deadline = monotonic() + 180
+    while simctl("spawn", udid, "notifyutil", "-g", "com.apple.springboard.finishedstartup").split()[-1] == "0":
+        if monotonic() > deadline:
+            raise SystemExit(f"SpringBoard on {udid} did not finish starting")
+        sleep(1)
+
+
 def prepare(udid: str, device: Device, language: str, instant: datetime) -> None:
     if device.platform == "iOS":
         # Cleared only after a language's restart, an earlier override's date can stay.
@@ -192,6 +203,7 @@ def prepare(udid: str, device: Device, language: str, instant: datetime) -> None
         simctl("status_bar", udid, "clear")
     set_language(udid, language, LANGUAGES[language])
     if device.platform == "iOS":
+        wait_for_springboard(udid)
         simctl("ui", udid, "appearance", "dark")
         simctl("status_bar", udid, "clear")
         simctl("status_bar", udid, "override", "--time", status_bar_time(device, instant), *STATUS_BAR)
