@@ -2,7 +2,8 @@ name: App Store screenshots
 
 # A release's App Store screenshots, from the demo account in simulators: a version tag pushed on a
 # commit that is on main runs tools/app_store_screenshots.py, and the run keeps the PNGs as an
-# artifact for 90 days, apart from the public GitHub release. A tag on any other commit skips.
+# artifact for 90 days, apart from the public GitHub release. A tag on any other commit skips; a tag
+# pushed before its commit reached main takes a manual re-run once it has.
 
 on:
   push:
@@ -58,3 +59,4 @@ jobs:
           name: app-store-screenshots-${{ github.ref_name }}
           path: screenshots
           retention-days: 90
+          overwrite: true
