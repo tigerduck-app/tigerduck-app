@@ -268,6 +268,21 @@ struct DemoAccountTests {
         #expect(ServerKind.classTableSources.allSatisfy { statuses.note(for: $0) == nil })
     }
 
+    @Test("the demo ended at launch leaves none of its server statuses behind")
+    func theEndedDemoLeavesNoStatus() throws {
+        let folder = Folder()
+        let launch = AccountSession(signIns: SignInSeries())
+        let statuses = ServerStatusTracker()
+        let demo = Self.account(folder, statuses: statuses)
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: launch))
+        #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .ok })
+
+        SecureStore.$sharedForTesting.withValue(LockablePhoneKeychain()) { demo.resume(in: launch) }
+
+        #expect(!launch.signIns.currentSignIn.isDemo)
+        #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .unknown })
+    }
+
     @Test("signing out ends the demo, and the sign-out's clearing takes the file's data and the kept key with it")
     func signingOutLeavesTheDemo() async throws {
         let folder = Folder()
