@@ -77,4 +77,18 @@ struct ServerStatusSourcesTests {
         SchoolRefresh.showOffline(for: demoSignIns.currentSignIn, on: demo)
         #expect(demo.loadingState == .loaded)
     }
+
+    @Test("A refresh of a sign-in that has ended leaves the next account's state alone")
+    func anEndedSignInLeavesTheIndicator() {
+        for startEnded in [{ (series: SignInSeries) in series.startDemo() }, { (_: SignInSeries) in }] {
+            let signIns = SignInSeries()
+            startEnded(signIns)
+            let ended = signIns.currentSignIn
+            signIns.end()
+            let next = Indicator()
+            next.loadingState = .loading
+            SchoolRefresh.showOffline(for: ended, on: next)
+            #expect(next.loadingState == .loading)
+        }
+    }
 }
