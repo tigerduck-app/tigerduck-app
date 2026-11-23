@@ -19,8 +19,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     let criteria: [SearchCriteria]
     /// Optional server-side sort criteria.
     let sortCriteria: [SortCriterion]
-    /// Charset used when emitting `SORT`, or `nil` when the caller named an invalid one, which
-    /// `validate()` rejects.
+    /// Charset used when emitting `SORT`; `nil` when the caller named an invalid one.
     let sortCharset: CharacterSetName?
     /// Calendar used for date-to-day conversions.
     let calendar: Calendar
