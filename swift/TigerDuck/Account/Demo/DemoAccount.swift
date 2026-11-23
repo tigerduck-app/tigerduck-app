@@ -20,6 +20,7 @@ struct DemoAccount: AccountScoped {
         let signIn = session.startDemoSignIn()
         Defaults[stores.demoSignedIn, for: signIn] = true
         stores.turnOffSync(signIn)
+        stores.statuses.showDemo(for: signIn)
         return signIn
     }
 
@@ -108,7 +109,6 @@ struct DemoAccount: AccountScoped {
             stores.keepScores(scores, fixture.normalizedStudentId, signIn)
         }
         showClubs(of: fixture)
-        for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
     }
 
     /// The clubs live in memory only, so a launch behind the lock screen, which writes nothing else,

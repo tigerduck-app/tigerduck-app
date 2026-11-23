@@ -49,4 +49,18 @@ struct ServerStatusSourcesTests {
         #expect(failed.status(for: .scoreSystem) == .failed)
         #expect(failed.status(for: .courseSelection) == .unknown)
     }
+
+    @Test("A real account's failure reads failed, with its note, also after a demo has ended")
+    func aRealAccountsFailureReadsFailed() {
+        let signIns = SignInSeries()
+        signIns.startDemo()
+        let tracker = ServerStatusTracker()
+        tracker.showDemo(for: signIns.currentSignIn)
+        signIns.end()
+
+        for server in ServerKind.classTableSources { tracker.set(.failed, for: server, note: "timed out") }
+
+        #expect(ServerKind.classTableSources.allSatisfy { tracker.status(for: $0) == .failed })
+        #expect(ServerKind.classTableSources.allSatisfy { tracker.note(for: $0) == "timed out" })
+    }
 }
