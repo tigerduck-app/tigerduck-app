@@ -246,6 +246,43 @@ struct DemoAccountTests {
         #expect(calls.syncTurnedOff == 1)
     }
 
+    @Test("in the demo, a refused refresh leaves every class-table source ok, with no note")
+    func aRefusedRefreshLeavesTheSourcesOk() async throws {
+        let folder = Folder()
+        let session = AccountSession(signIns: SignInSeries())
+        let statuses = ServerStatusTracker()
+        let demo = Self.account(folder, statuses: statuses)
+        let signIn = demo.startSignIn(in: session)
+        demo.write(try #require(demo.fixture), for: signIn)
+        let refusal = URLError(.notConnectedToInternet).localizedDescription
+
+        for server in ServerKind.classTableSources where server != .backend {
+            CourseFetch.record(.failed, for: server, note: refusal, round: signIn, tracker: statuses)
+        }
+        await withExclusiveRealDefaults {
+            statuses.noteBackendReachable(false)
+            statuses.noteSyncResult(false)
+        }
+
+        #expect(ServerKind.classTableSources.allSatisfy { statuses.status(for: $0) == .ok })
+        #expect(ServerKind.classTableSources.allSatisfy { statuses.note(for: $0) == nil })
+    }
+
+    @Test("the demo ended at launch leaves none of its server statuses behind")
+    func theEndedDemoLeavesNoStatus() throws {
+        let folder = Folder()
+        let launch = AccountSession(signIns: SignInSeries())
+        let statuses = ServerStatusTracker()
+        let demo = Self.account(folder, statuses: statuses)
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: launch))
+        #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .ok })
+
+        SecureStore.$sharedForTesting.withValue(LockablePhoneKeychain()) { demo.resume(in: launch) }
+
+        #expect(!launch.signIns.currentSignIn.isDemo)
+        #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .unknown })
+    }
+
     @Test("signing out ends the demo, and the sign-out's clearing takes the file's data and the kept key with it")
     func signingOutLeavesTheDemo() async throws {
         let folder = Folder()

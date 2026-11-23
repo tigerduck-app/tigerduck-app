@@ -59,9 +59,10 @@ final class HomeViewModel {
     }
 
     private func fetchData(authService: AuthService) async {
-        guard await SchoolRefresh.begin() else { return }
+        let signIn = await authService.session.startingSignIn
+        guard await SchoolRefresh.begin(for: signIn) else { return }
         SchoolRefresh.dropMoodleCourses()
-        await authService.session.withSignIn { await SchoolRefresh.assignments(authService: authService, for: $0) }
+        await SchoolRefresh.assignments(authService: authService, for: signIn)
         reloadFromCache()
         SchoolRefresh.end()
     }

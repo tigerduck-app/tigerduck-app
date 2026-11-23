@@ -97,7 +97,7 @@ final class CalendarViewModel {
     }
 
     func refresh(authService: AuthService, for signIn: SignIn) async {
-        guard await SchoolRefresh.begin() else { return }
+        guard await SchoolRefresh.begin(for: signIn) else { return }
         SchoolRefresh.dropMoodleCourses()
         async let moodleEvents = SchoolRefresh.moodleEvents(authService: authService, for: signIn)
         async let schoolEvents = SchoolRefresh.schoolEvents()

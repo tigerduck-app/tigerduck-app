@@ -49,4 +49,46 @@ struct ServerStatusSourcesTests {
         #expect(failed.status(for: .scoreSystem) == .failed)
         #expect(failed.status(for: .courseSelection) == .unknown)
     }
+
+    @Test("A real account's failure reads failed, with its note, also after a demo has ended")
+    func aRealAccountsFailureReadsFailed() {
+        let signIns = SignInSeries()
+        signIns.startDemo()
+        let tracker = ServerStatusTracker()
+        tracker.showDemo(for: signIns.currentSignIn)
+        signIns.end()
+
+        for server in ServerKind.classTableSources { tracker.set(.failed, for: server, note: "timed out") }
+
+        #expect(ServerKind.classTableSources.allSatisfy { tracker.status(for: $0) == .failed })
+        #expect(ServerKind.classTableSources.allSatisfy { tracker.note(for: $0) == "timed out" })
+    }
+
+    @Test("A refresh without a network shows the offline error, and not in the demo, whose requests are refused")
+    func theOfflineErrorIsNotTheDemos() {
+        let real = Indicator()
+        SchoolRefresh.showOffline(for: testSignIn, on: real)
+        #expect(real.loadingState == .error(String(localized: "error_network_unavailable")))
+
+        let demoSignIns = SignInSeries()
+        demoSignIns.startDemo()
+        let demo = Indicator()
+        demo.loadingState = .error(String(localized: "error_network_unavailable"))
+        SchoolRefresh.showOffline(for: demoSignIns.currentSignIn, on: demo)
+        #expect(demo.loadingState == .loaded)
+    }
+
+    @Test("A refresh of a sign-in that has ended leaves the next account's state alone")
+    func anEndedSignInLeavesTheIndicator() {
+        for startEnded in [{ (series: SignInSeries) in series.startDemo() }, { (_: SignInSeries) in }] {
+            let signIns = SignInSeries()
+            startEnded(signIns)
+            let ended = signIns.currentSignIn
+            signIns.end()
+            let next = Indicator()
+            next.loadingState = .loading
+            SchoolRefresh.showOffline(for: ended, on: next)
+            #expect(next.loadingState == .loading)
+        }
+    }
 }
