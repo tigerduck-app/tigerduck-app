@@ -19,8 +19,8 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
     let criteria: [SearchCriteria]
     /// Optional server-side sort criteria.
     let sortCriteria: [SortCriterion]
-    /// Charset used when emitting `SORT`.
-    let sortCharset: String
+    /// Charset used when emitting `SORT`; `nil` when the caller named an invalid one.
+    let sortCharset: CharacterSetName?
     /// Calendar used for date-to-day conversions.
     let calendar: Calendar
     /// Whether to issue SORT/UID SORT instead of SEARCH/UID SEARCH.
@@ -46,7 +46,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         self.identifierSet = identifierSet
         self.criteria = criteria
         self.sortCriteria = sortCriteria
-        self.sortCharset = sortCharset
+        self.sortCharset = CharacterSetName(sortCharset)
         self.calendar = calendar
         self.useSort = useSort
         self.useEsearch = useEsearch
@@ -59,6 +59,9 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         }
         guard !useSort || !sortCriteria.isEmpty else {
             throw IMAPError.invalidArgument("Sort criteria cannot be empty when SORT is enabled")
+        }
+        guard !useSort || sortCharset != nil else {
+            throw IMAPError.invalidArgument("Invalid sort charset")
         }
         for criterion in criteria { try criterion.validate() }
     }
@@ -90,6 +93,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
         }
 
         if useSort {
+            guard let sortCharset else { preconditionFailure("validate() rejects an invalid sort charset") }
             if T.self == UID.self {
                 return TaggedCommand(
                     tag: tag,
@@ -107,7 +111,7 @@ struct ExtendedSearchCommand<T: MessageIdentifier>: IMAPTaggedCommand, Sendable 
                 )
             }
         } else {
-            let charset = criteria.contains(where: \.containsNonASCIIText) ? "UTF-8" : nil
+            let charset: CharacterSetName? = criteria.contains(where: \.containsNonASCIIText) ? "UTF-8" : nil
             if T.self == UID.self {
                 return TaggedCommand(tag: tag, command: .uidSearch(key: key, charset: charset, returnOptions: returnOptions))
             }

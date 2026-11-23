@@ -106,7 +106,7 @@ class BaseIMAPCommandHandler<ResultType: Sendable>: CommandHandler, RemovableCha
         }
 
         // Check if this is a tagged response that matches our command tag
-        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
+        if case .tagged(let taggedResponse) = response, String(taggedResponse.tag) == commandTag {
             // Check the response status
             if case .ok = taggedResponse.state {
                 // Subclasses should override handleTaggedOKResponse to handle the OK response

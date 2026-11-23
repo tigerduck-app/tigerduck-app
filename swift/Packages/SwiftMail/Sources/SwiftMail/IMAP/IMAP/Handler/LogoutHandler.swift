@@ -34,7 +34,7 @@ final class LogoutHandler: BaseIMAPCommandHandler<Void>, IMAPCommandHandler, @un
         let baseHandled = super.processResponse(response)
 
         // First check if this is our tagged response
-        if case .tagged(let taggedResponse) = response, taggedResponse.tag == commandTag {
+        if case .tagged(let taggedResponse) = response, String(taggedResponse.tag) == commandTag {
             if case .ok = taggedResponse.state {
                 succeedWithResult(())
             } else {

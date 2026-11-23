@@ -8,11 +8,12 @@ import PackageDescription
 let package = Package(
     name: "SwiftMail",
     platforms: [
-        .macOS("12.0"),
-        .iOS("15.0"),
-        .tvOS("15.0"),
-        .watchOS("8.0"),
-        .macCatalyst("15.0")
+        .macOS("15.0"),
+        .iOS("18.0"),
+        .tvOS("18.0"),
+        .watchOS("11.0"),
+        .visionOS("2.0"),
+        .macCatalyst("18.0")
     ],
     products: [
         .library(
@@ -23,7 +24,7 @@ let package = Package(
         .package(url: "https://github.com/apple/swift-log.git", from: "1.0.0"),
         .package(url: "https://github.com/Cocoanetics/SwiftCross", from: "1.2.0"),
         .package(url: "https://github.com/apple/swift-nio", from: "2.101.3"),
-        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.3.0"),
+        .package(url: "https://github.com/apple/swift-nio-imap", from: "0.5.0"),
         .package(url: "https://github.com/apple/swift-nio-ssl", from: "2.37.1"),
         .package(url: "https://github.com/apple/swift-collections.git", from: "1.0.0")
     ],

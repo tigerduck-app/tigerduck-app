@@ -23,7 +23,7 @@ struct RenameMailboxCommand: IMAPTaggedCommand {
     func toTaggedCommand(tag: String) -> TaggedCommand {
         let source = MailboxName(ByteBuffer(string: from))
         let destination = MailboxName(ByteBuffer(string: to))
-        let parameters: OrderedDictionary<String, ParameterValue?> = [:]
+        let parameters: OrderedDictionary<ExtensionKey<Command>, ParameterValue?> = [:]
         return TaggedCommand(tag: tag, command: .rename(from: source, to: destination, parameters: parameters))
     }
 }
