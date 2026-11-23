@@ -123,7 +123,7 @@ final class ClassTableLoader {
         let signIn = authService.session.currentSignIn
         Task { [self, table] in
             guard await NetworkMonitor.shared.isReachable() else {
-                SchoolRefresh.showOffline()
+                SchoolRefresh.showOffline(for: signIn)
                 self.refreshing.value = false
                 return
             }
@@ -147,7 +147,7 @@ final class ClassTableLoader {
         _ table: ClassTableViewModel, authService: AuthService, semester: String? = nil, for signIn: SignIn
     ) async {
         let targetSemester = semester ?? table.currentSemester
-        guard await SchoolRefresh.begin() else { return }
+        guard await SchoolRefresh.begin(for: signIn) else { return }
 
         SchoolRefresh.dropMoodleCourses()
         SchoolRefresh.clubActivities()

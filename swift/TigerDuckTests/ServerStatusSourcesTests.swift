@@ -63,4 +63,17 @@ struct ServerStatusSourcesTests {
         #expect(ServerKind.classTableSources.allSatisfy { tracker.status(for: $0) == .failed })
         #expect(ServerKind.classTableSources.allSatisfy { tracker.note(for: $0) == "timed out" })
     }
+
+    @Test("A refresh without a network shows the offline error, and not in the demo, whose requests are refused")
+    func theOfflineErrorIsNotTheDemos() {
+        let real = Indicator()
+        SchoolRefresh.showOffline(for: testSignIn, on: real)
+        #expect(real.loadingState == .error(String(localized: "error_network_unavailable")))
+
+        let demoSignIns = SignInSeries()
+        demoSignIns.startDemo()
+        let demo = Indicator()
+        SchoolRefresh.showOffline(for: demoSignIns.currentSignIn, on: demo)
+        #expect(demo.loadingState == .idle)
+    }
 }
