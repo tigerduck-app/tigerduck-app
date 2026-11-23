@@ -227,10 +227,6 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
     }
 
-    /// Build a `Date` from explicit Y/M/D + H/M/S components, anchored to UTC.
-    /// Folded into a single `DateComponents` parameter so the helper signature
-    /// stays under the 6-parameter swiftlint limit while keeping call sites
-    /// readable via the labelled `DateComponents` initializer.
     @Test
     func testEnvelopeGroupsListTheirMembers() async throws {
         let team = #"((NIL NIL "Team" NIL)(NIL NIL "a" "example.com")(NIL NIL "b" "example.com")(NIL NIL NIL NIL))"#
@@ -246,6 +242,10 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos.first?.cc == ["undisclosed-recipients: "])
     }
 
+    /// Build a `Date` from explicit Y/M/D + H/M/S components, anchored to UTC.
+    /// Folded into a single `DateComponents` parameter so the helper signature
+    /// stays under the 6-parameter swiftlint limit while keeping call sites
+    /// readable via the labelled `DateComponents` initializer.
     private static func makeDate(_ components: DateComponents) -> Date? {
         var resolved = components
         resolved.timeZone = TimeZone(secondsFromGMT: 0)

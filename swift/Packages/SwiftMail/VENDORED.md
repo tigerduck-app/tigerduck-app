@@ -161,10 +161,13 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
     atom-shaped values when they are built ([release notes](https://github.com/apple/swift-nio-imap/releases/tag/0.5.0)),
     so each call site decides what an invalid value does:
     - Command tags. `TaggedCommand` and APPEND's `.start` take a `Command.Tag`. SwiftMail keeps
-      its `String` tags, which the SMTP handlers share, and converts them with
-      `Command.Tag(generated:)` (`IMAP/IMAP/Commands/IMAPCommand.swift`). Every tag comes from
-      `IMAPConnection.generateCommandTag()`, so an invalid one is a bug and traps, as in
-      NIOIMAP's own `IMAPCommands`. The handlers compare a response's tag as `String(tag)`.
+      its tags as `String`, as every handler takes them in
+      `IMAPCommandHandler.init(commandTag:promise:)`, and converts them with
+      `Command.Tag(generated:)` (`IMAP/IMAP/Commands/IMAPCommand.swift`). Every tag it sends comes
+      from `IMAPConnection.generateCommandTag()`, so an invalid one is a bug and traps, as in
+      NIOIMAP's own `IMAPCommands`. Patch 5's `FetchMessageInfoRequest.wireCommand(tag:)` only
+      renders a caller's tag, and its documentation says an invalid one traps. The handlers
+      compare a response's tag as `String(tag)`.
     - `CharacterSetName`. Patch 3's `CHARSET UTF-8` is a literal. The caller's `sortCharset:` is
       checked in `validate()` of `SearchCommand` and `ExtendedSearchCommand`, so an invalid name
       fails that one command with `IMAPError.invalidArgument` before anything is sent.
@@ -177,7 +180,8 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
       keyword as `CUSTOM` (`Flag.toNIO()`, `SearchCriteria`'s keyword criteria) is unchanged.
 
     Upstream `main` still pins swift-nio-imap to `14ad388`, before these API changes, so a
-    re-vendor has to port it again. The tests changed only where they build the same values.
+    re-vendor has to port it again. Besides the two tests in the table below, the tests changed
+    only where they build these values.
 
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
@@ -223,7 +227,7 @@ What each patch is protected by:
 | 10 (transfer timeouts) | `TigerDuckPatchTests` |
 | 11 (`Reply-To` kept) | `AdditionalHeaderFieldsTests`, plus app-level `MailComposeViewModelTests` |
 | 12 (workflow action pins) | none; the workflow does not run in this repository |
-| 13 (swift-nio-imap 0.5.0) | compile-time, plus `SearchCommandTests.testInvalidSortCharsetFailsValidation` |
+| 13 (swift-nio-imap 0.5.0) | compile-time, plus `SearchCommandTests.testInvalidSortCharsetFailsValidation` and `FetchMessageInfoHandlerTests.testEnvelopeGroupsListTheirMembers` |
 
 To move to a newer upstream:
 

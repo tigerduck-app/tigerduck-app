@@ -27,7 +27,7 @@ public enum FetchMessageInfoRequest {
     ///   - headerFields: Named header fields, as passed to `fetchMessageInfo`. Ignored by the
     ///     command itself when `options` already contains `.fullHeader`.
     ///   - uid: The UID to render the command for; only affects the identifier in the output.
-    ///   - tag: The command tag to render.
+    ///   - tag: The command tag to render. It must be an RFC 3501 `tag`, or this traps.
     public static func wireCommand(
         options: FetchMessageInfoOptions = .default,
         headerFields: [String]? = nil,
