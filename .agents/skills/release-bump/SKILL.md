@@ -111,10 +111,12 @@ Color is **`00BB00`**. Do not change. The link target is the GitHub release step
 
 ### 5. Add the in-app "What's new" entry
 
-`swift/TigerDuck/whatsnew.json` holds the **summary** — the last page of the
-sheet the app shows on first launch after an update, and of the Settings →
-About "What's new" replay. **A version with no entry here shows no summary**,
-and an upgrade that also brings no `WhatsNewCatalog` page shows no sheet at all.
+`swift/TigerDuck/whatsnew.json` holds each version's **summary**. On first
+launch after an update the sheet shows every version since the last one shown,
+oldest first, each as its `WhatsNewCatalog` pages followed by its summary; the
+Settings → About "What's new" replay shows the newest version alone.
+**A version with no entry here shows no summary**, and an upgrade that brings
+neither an entry nor a catalog page shows no sheet at all.
 The decoder is defensive, so a missing entry is not an error you will see in the
 app. Add it every marketing bump, fix-only releases included, in the bump
 commit, so the entry is on `dev` before the release PR merges to `main` and the
@@ -164,7 +166,7 @@ layout:
   would actually notice.
 
 Feature pages — a demo of a new feature, or a question such as "apply the
-recommended layout?" — come before the summary and are **not** part of a bump.
+recommended layout?" — come before their version's summary and are **not** part of a bump.
 They're Swift in `swift/TigerDuck/Features/Updates/WhatsNewCatalog.swift`, keyed
 by the same version, with their copy inline in the same two languages
 (`WhatsNewText(en:zhHant:)`, not `app-translation`); they land with the feature
@@ -290,7 +292,7 @@ git show origin/main:swift/TigerDuck.xcodeproj/project.pbxproj | grep -oE '(MARK
 ## Anti-patterns
 
 - ❌ Updating only the Chinese README — the English one drifts and stops matching.
-- ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet loses its summary, or never appears when the upgrade brings no catalog page, and the app never warns you; only the `dev` → `main` CI check catches it.
+- ❌ Shipping a marketing bump with no `whatsnew.json` entry — the update sheet loses that version's summary, or never appears when the upgrade brings nothing else, and the app never warns you; only the `dev` → `main` CI check catches it.
 - ❌ Pasting the release notes verbatim into `whatsnew.json` — the release is a changelog, the JSON is App Store copy.
 - ❌ Listing every PR in a GitHub release — summarize and cite the PRs behind each line.
 - ❌ Adding a version-history row or a roadmap item back to the READMEs — those live on GitHub Releases and Milestones.
