@@ -4,7 +4,11 @@ import SwiftUI
 enum WhatsNewSampleFlow {
     static func presentation() -> WhatsNewPresentation {
         let language = WhatsNewLanguage.current
-        return WhatsNewPresentation(version: "sample", language: language, pages: pages, summary: summary(language))
+        return WhatsNewPresentation(
+            version: "sample",
+            language: language,
+            steps: pages.map(WhatsNewStep.page) + [.summary(summary(language))]
+        )
     }
 
     private static var pages: [WhatsNewPage] {

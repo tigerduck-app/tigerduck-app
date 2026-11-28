@@ -10,7 +10,7 @@ struct WhatsNewFlowBuilderTests {
             from: "2.1.0", to: "2.3.0",
             releases: ["2.3.0": [page("c")], "2.2.0": [page("b1"), page("b2")]]
         ))
-        #expect(flow.pages.map(\.id) == ["b1", "b2", "c"])
+        #expect(flow.steps.map(\.id) == ["b1", "b2", "c"])
     }
 
     @Test func theLastSeenReleaseAndAnyLaterThanTheInstalledOneAreLeftOut() throws {
@@ -18,7 +18,7 @@ struct WhatsNewFlowBuilderTests {
             from: "2.1.0", to: "2.2.0",
             releases: ["2.1.0": [page("seen")], "2.2.0": [page("new")], "2.3.0": [page("ahead")]]
         ))
-        #expect(flow.pages.map(\.id) == ["new"])
+        #expect(flow.steps.map(\.id) == ["new"])
     }
 
     @Test func pagesTheirCheckRejectsAreDropped() throws {
@@ -27,31 +27,79 @@ struct WhatsNewFlowBuilderTests {
             releases: ["2.2.0": [page("keep"), page("skip")]],
             isApplicable: { $0.id != "skip" }
         ))
-        #expect(flow.pages.map(\.id) == ["keep"])
+        #expect(flow.steps.map(\.id) == ["keep"])
     }
 
     @Test func withNoMarkerOnlyTheInstalledReleaseCounts() throws {
         let flow = try #require(upgrade(
             from: nil, to: "2.3.0",
-            releases: ["2.2.0": [page("old")], "2.3.0": [page("current")]]
+            releases: ["2.2.0": [page("old")], "2.3.0": [page("current")]],
+            summaries: [summary("2.2.0"), summary("2.3.0")]
         ))
-        #expect(flow.pages.map(\.id) == ["current"])
+        #expect(flow.steps.map(\.id) == ["current", "summary:2.3.0"])
     }
 
     @Test func theSummaryFollowsThePages() throws {
         let flow = try #require(upgrade(
             from: "2.2.0", to: "2.3.0",
             releases: ["2.3.0": [page("a")]],
-            summary: summary("2.3.0")
+            summaries: [summary("2.3.0")]
         ))
-        #expect(flow.pages.map(\.id) == ["a"])
-        #expect(flow.summary?.version == "2.3.0")
+        #expect(flow.steps.map(\.id) == ["a", "summary:2.3.0"])
     }
 
     @Test func aSummaryAloneIsAFlow() throws {
-        let flow = try #require(upgrade(from: "2.2.0", to: "2.3.0", releases: [:], summary: summary("2.3.0")))
-        #expect(flow.pages.isEmpty)
-        #expect(flow.summary != nil)
+        let flow = try #require(upgrade(from: "2.2.0", to: "2.3.0", releases: [:], summaries: [summary("2.3.0")]))
+        #expect(flow.steps.map(\.id) == ["summary:2.3.0"])
+    }
+
+    @Test func everySkippedVersionGetsItsOwnSummaryOldestFirst() throws {
+        let flow = try #require(upgrade(
+            from: "2.9.1", to: "4.1.0",
+            releases: [:],
+            summaries: ["4.0.2", "2.9.1", "4.1.0", "4.0.0", "4.2.0", "4.0.3", "2.9.0", "4.0.1"].map(summary)
+        ))
+        #expect(flow.steps.map(\.id) == [
+            "summary:4.0.0", "summary:4.0.1", "summary:4.0.2", "summary:4.0.3", "summary:4.1.0",
+        ])
+    }
+
+    @Test func aVersionsPagesComeRightBeforeItsOwnSummary() throws {
+        let flow = try #require(upgrade(
+            from: "2.2.0", to: "2.5.0",
+            releases: ["2.4.0": [page("b1"), page("b2")], "2.3.0": [page("a")]],
+            summaries: ["2.5.0", "2.4.0", "2.3.0"].map(summary)
+        ))
+        #expect(flow.steps.map(\.id) == ["a", "summary:2.3.0", "b1", "b2", "summary:2.4.0", "summary:2.5.0"])
+    }
+
+    @Test func aVersionWithoutAnEntryIsSkippedAndItsPagesStillShow() throws {
+        let flow = try #require(upgrade(
+            from: "4.0.0", to: "4.0.4",
+            releases: ["4.0.3": [page("p")]],
+            summaries: ["4.0.1", "4.0.4"].map(summary)
+        ))
+        #expect(flow.steps.map(\.id) == ["summary:4.0.1", "p", "summary:4.0.4"])
+    }
+
+    @Test func everyStepButTheLastMovesOnAndTheLastFinishes() throws {
+        let flow = try #require(upgrade(
+            from: "4.0.0", to: "4.0.2",
+            releases: ["4.0.1": [page("p")]],
+            summaries: ["4.0.1", "4.0.2"].map(summary)
+        ))
+        #expect(flow.steps.indices.map { flow.advanceTitleKey(at: $0).key } == [
+            "action_next", "action_next", "whats_new_continue",
+        ])
+        let single = try #require(upgrade(from: "4.0.0", to: "4.0.1", releases: [:], summaries: [summary("4.0.1")]))
+        #expect(single.advanceTitleKey(at: 0).key == "whats_new_continue")
+    }
+
+    @Test func theIdentityChangesWithTheSummariesItHolds() throws {
+        let summaries = ["4.0.3", "4.1.0"].map(summary)
+        let longer = try #require(upgrade(from: "4.0.2", to: "4.1.0", releases: [:], summaries: summaries))
+        let shorter = try #require(upgrade(from: "4.0.3", to: "4.1.0", releases: [:], summaries: summaries))
+        #expect(longer.id != shorter.id)
     }
 
     @Test func nothingToShowIsNoFlow() {
@@ -66,17 +114,19 @@ struct WhatsNewFlowBuilderTests {
     @Test func versionsCompareNumericallyAndPadMissingComponents() throws {
         let flow = try #require(upgrade(
             from: "1.9.0", to: "1.10",
-            releases: ["1.10.0": [page("ten")], "1.9.5": [page("nine")]]
+            releases: ["1.10.0": [page("ten")], "1.9.5": [page("nine")]],
+            summaries: [summary("1.10.0")]
         ))
-        #expect(flow.pages.map(\.id) == ["nine", "ten"])
+        #expect(flow.steps.map(\.id) == ["nine", "ten", "summary:1.10.0"])
     }
 
     @Test func aMalformedReleaseKeyIsSkipped() throws {
         let flow = try #require(upgrade(
             from: "2.1.0", to: "2.3.0",
-            releases: ["2.2.0-beta": [page("typo")], "2.3.0": [page("ok")]]
+            releases: ["2.2.0-beta": [page("typo")], "2.3.0": [page("ok")]],
+            summaries: [summary("2.2.0-beta")]
         ))
-        #expect(flow.pages.map(\.id) == ["ok"])
+        #expect(flow.steps.map(\.id) == ["ok"])
     }
 
     @Test func replayShowsTheNewestReleaseWithItsSummary() throws {
@@ -89,8 +139,7 @@ struct WhatsNewFlowBuilderTests {
             isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.3.0")
-        #expect(flow.pages.map(\.id) == ["new"])
-        #expect(flow.summary?.version == "2.3.0")
+        #expect(flow.steps.map(\.id) == ["new", "summary:2.3.0"])
     }
 
     @Test func replayFollowsTheCatalogWhenItIsAheadOfTheJSON() throws {
@@ -103,8 +152,7 @@ struct WhatsNewFlowBuilderTests {
             isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.3.0")
-        #expect(flow.pages.map(\.id) == ["new"])
-        #expect(flow.summary?.version == "2.3.0")
+        #expect(flow.steps.map(\.id) == ["new", "summary:2.3.0"])
     }
 
     @Test func replayFollowsTheJSONWhenItIsAheadOfTheCatalog() throws {
@@ -117,7 +165,7 @@ struct WhatsNewFlowBuilderTests {
             isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.3.0")
-        #expect(flow.pages.isEmpty)
+        #expect(flow.steps.map(\.id) == ["summary:2.3.0"])
     }
 
     @Test func replayLeavesOutPagesThatDoNotApply() throws {
@@ -129,7 +177,7 @@ struct WhatsNewFlowBuilderTests {
             summaryFor: { _ in nil },
             isApplicable: { $0.id != "skip" }
         ))
-        #expect(flow.pages.map(\.id) == ["keep"])
+        #expect(flow.steps.map(\.id) == ["keep"])
     }
 
     @Test func replayFallsBackPastAReleaseWhosePagesAllDropOut() throws {
@@ -142,8 +190,7 @@ struct WhatsNewFlowBuilderTests {
             isApplicable: { $0.id != "skip" }
         ))
         #expect(flow.version == "2.2.0")
-        #expect(flow.pages.map(\.id) == ["old"])
-        #expect(flow.summary?.version == "2.2.0")
+        #expect(flow.steps.map(\.id) == ["old", "summary:2.2.0"])
     }
 
     @Test func replayWithNothingAuthoredIsNoFlow() {
@@ -167,8 +214,7 @@ struct WhatsNewFlowBuilderTests {
             isApplicable: { _ in true }
         ))
         #expect(flow.version == "2.2.0")
-        #expect(flow.pages.map(\.id) == ["installed"])
-        #expect(flow.summary?.version == "2.2.0")
+        #expect(flow.steps.map(\.id) == ["installed", "summary:2.2.0"])
     }
 
     @Test func replayWithOnlyFuturePagesAndNoSummaryIsNoFlow() {
@@ -186,7 +232,7 @@ struct WhatsNewFlowBuilderTests {
         from lastSeen: String?,
         to current: String,
         releases: [String: [WhatsNewPage]],
-        summary: WhatsNewRepository.ResolvedWhatsNew? = nil,
+        summaries: [WhatsNewRepository.ResolvedWhatsNew] = [],
         isApplicable: (WhatsNewPage) -> Bool = { _ in true }
     ) -> WhatsNewPresentation? {
         WhatsNewFlowBuilder.upgrade(
@@ -195,7 +241,7 @@ struct WhatsNewFlowBuilderTests {
             version: current,
             language: .en,
             releases: releases,
-            summary: summary,
+            summaries: summaries,
             isApplicable: isApplicable
         )
     }

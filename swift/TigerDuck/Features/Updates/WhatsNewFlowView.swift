@@ -17,7 +17,7 @@ struct WhatsNewFlowView: View {
     }
 
     private var stepCount: Int {
-        presentation.pages.count + (presentation.summary == nil ? 0 : 1)
+        presentation.steps.count
     }
 
     var body: some View {
@@ -61,7 +61,9 @@ struct WhatsNewFlowView: View {
     }
 
     private var lockedPages: Set<Int> {
-        Set(presentation.pages.indices.filter { presentation.pages[$0].locksForwardSwipe })
+        Set(presentation.steps.indices.filter {
+            if case .page(let page) = presentation.steps[$0] { page.locksForwardSwipe } else { false }
+        })
     }
 
     private var footer: some View {
@@ -87,24 +89,26 @@ struct WhatsNewFlowView: View {
 
     @ViewBuilder
     private func stepContent(at step: Int) -> some View {
-        if step < presentation.pages.count {
+        switch presentation.steps[step] {
+        case .page(let page):
             WhatsNewPageContentView(
-                page: presentation.pages[step],
+                page: page,
                 context: WhatsNewPageContext(
                     app: app,
                     language: presentation.language,
                     advance: advance
                 )
             )
-        } else if let summary = presentation.summary {
+        case .summary(let summary):
             WhatsNewSummaryContent(entry: summary, isActive: step == index)
         }
     }
 
     @ViewBuilder
     private func controls(at step: Int) -> some View {
-        if step < presentation.pages.count {
-            switch presentation.pages[step].kind {
+        switch presentation.steps[step] {
+        case .page(let page):
+            switch page.kind {
             case .feature, .choice, .toggle:
                 primaryButton(nextTitle(at: step), action: advance)
             case .custom(let showsNextButton, _):
@@ -135,15 +139,13 @@ struct WhatsNewFlowView: View {
                         .disabled(isRequesting)
                 }
             }
-        } else {
-            primaryButton(String(localized: "whats_new_continue"), action: onFinish)
+        case .summary:
+            primaryButton(nextTitle(at: step), action: advance)
         }
     }
 
     private func nextTitle(at step: Int) -> String {
-        step == stepCount - 1
-            ? String(localized: "whats_new_continue")
-            : String(localized: "action_next")
+        String(localized: presentation.advanceTitleKey(at: step))
     }
 
     private func primaryButton(_ title: String, isBusy: Bool = false, action: @escaping () -> Void) -> some View {

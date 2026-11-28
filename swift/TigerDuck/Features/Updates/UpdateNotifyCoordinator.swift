@@ -79,7 +79,7 @@ final class UpdateNotifyCoordinator {
             version: version,
             language: WhatsNewLanguage(languageTag: languageTag),
             releases: WhatsNewCatalog.releases,
-            summary: repository.entry(forVersion: version, languageTag: languageTag),
+            summaries: repository.entries(languageTag: languageTag),
             isApplicable: { $0.isApplicable(app) }
         )
     }
