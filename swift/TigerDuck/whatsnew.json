@@ -928,5 +928,25 @@
         { "symbol": "laptopcomputer", "title": "Online classes", "body": "A class moved online shows Online in place of its room." }
       ]
     }
+  },
+  "4.1.0": {
+    "zh-TW": {
+      "title": "4.1.0 更新內容",
+      "items": [
+        { "symbol": "textformat.size", "title": "信件大小", "body": "允許調整字體大小，內文樣式修改。" },
+        { "symbol": "photo", "title": "信件圖片", "body": "允許預覽圖片。" },
+        { "symbol": "globe", "title": "小工具語言", "body": "小工具與即時動態跟隨 App 的語言。" },
+        { "symbol": "calendar", "title": "行事曆", "body": "修正錯誤月份。" }
+      ]
+    },
+    "en": {
+      "title": "What's new in 4.1.0",
+      "items": [
+        { "symbol": "textformat.size", "title": "Mail text size", "body": "Adjust the font size; the body has a new style." },
+        { "symbol": "photo", "title": "Mail images", "body": "Preview images." },
+        { "symbol": "globe", "title": "Widget language", "body": "Widgets and the Live Activity follow the app's language." },
+        { "symbol": "calendar", "title": "Calendar", "body": "Fixed showing the wrong month." }
+      ]
+    }
   }
 }
