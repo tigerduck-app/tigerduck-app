@@ -74,10 +74,7 @@ struct DemoAccount: AccountScoped {
     }
 
     /// Ends what the demo keeps outside the stores a sign-out clears, writing for `signIn`, the one
-    /// after the demo's: the public course-change feed, its clubs, shown in memory, with their
-    /// subscriptions, its transcript, the server statuses it marks ok, and the library and mail
-    /// sign-ins it made. The clubs' unsent mark and the server statuses are the demo's own only
-    /// `afterCurrentDemo`. Each step can run again, and the demo stays marked until the last, so the
+    /// after the demo's. Each step can run again, and the demo stays marked until the last, so the
     /// next launch's `resume` finishes an end cut short.
     func leave(for signIn: SignIn, afterCurrentDemo: Bool) {
         if afterCurrentDemo { stores.statuses.reset() }
@@ -188,7 +185,6 @@ struct DemoStores {
         ClubActivities.shared.showStored()
     }
     var dropScores: (_ studentId: String) -> Void = { NTUSTScoreService.invalidateCache(studentId: $0) }
-    /// The library and mail sign-ins, when they are the demo's.
     var signOutServices: () -> Void = {
         if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
         #if os(iOS)
