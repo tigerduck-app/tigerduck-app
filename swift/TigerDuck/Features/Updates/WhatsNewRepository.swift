@@ -31,6 +31,12 @@ struct WhatsNewRepository {
         )
     }
 
+    func entries(languageTag: String) -> [ResolvedWhatsNew] {
+        (loadByVersion() ?? [:]).compactMap { version, versionEntry in
+            Self.select(versionEntry: versionEntry, version: version, languageTag: languageTag)
+        }
+    }
+
     func latestEntry(languageTag: String, upTo: AppVersion? = nil) -> ResolvedWhatsNew? {
         guard let byVersion = loadByVersion(), !byVersion.isEmpty else { return nil }
         let pairs = byVersion.keys.compactMap { key -> (String, AppVersion)? in

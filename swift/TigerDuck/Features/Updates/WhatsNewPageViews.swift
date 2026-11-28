@@ -200,16 +200,20 @@ private struct WhatsNewToggleRow: View {
 }
 
 struct WhatsNewPageDots: View {
+    static let visibleLimit = 9
+
     let count: Int
     let current: Int
     @Environment(\.whatsNewLanguage) private var language
 
     var body: some View {
         HStack(spacing: TigerDuckTheme.Spacing.sm) {
-            ForEach(0..<count, id: \.self) { step in
+            ForEach(Self.visibleSteps(count: count, current: current), id: \.self) { step in
                 Circle()
                     .fill(step == current ? AnyShapeStyle(.tint) : AnyShapeStyle(.quaternary))
                     .frame(width: 7, height: 7)
+                    .scaleEffect(Self.scale(of: step, count: count, current: current))
+                    .transition(.scale.combined(with: .opacity))
             }
         }
         .animation(.snappy, value: current)
@@ -218,6 +222,24 @@ struct WhatsNewPageDots: View {
             en: "Page \(current + 1) of \(count)",
             zhHant: "第 \(current + 1) 頁，共 \(count) 頁"
         ).resolved(for: language))
+    }
+
+    static func visibleSteps(count: Int, current: Int) -> Range<Int> {
+        guard count > visibleLimit else { return 0..<count }
+        let start = min(max(current - visibleLimit / 2, 0), count - visibleLimit)
+        return start..<(start + visibleLimit)
+    }
+
+    /// The two dots at an edge with more steps past it shrink, so the row reads as going on.
+    static func scale(of step: Int, count: Int, current: Int) -> CGFloat {
+        let window = visibleSteps(count: count, current: current)
+        let fromStart = window.lowerBound > 0 ? step - window.lowerBound : Int.max
+        let fromEnd = window.upperBound < count ? window.upperBound - 1 - step : Int.max
+        switch min(fromStart, fromEnd) {
+        case 0: return 0.5
+        case 1: return 0.75
+        default: return 1
+        }
     }
 }
 

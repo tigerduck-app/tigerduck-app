@@ -88,10 +88,10 @@ struct WhatsNewSchoolMailPagesTests {
             version: "2.3.0",
             language: .en,
             releases: WhatsNewCatalog.releases,
-            summary: nil,
+            summaries: [],
             isApplicable: { _ in true }
         ))
-        return flow.pages.map(\.id)
+        return flow.steps.map(\.id)
     }
 }
 

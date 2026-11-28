@@ -1,13 +1,28 @@
 import Foundation
 
+enum WhatsNewStep {
+    case page(WhatsNewPage)
+    case summary(WhatsNewRepository.ResolvedWhatsNew)
+
+    var id: String {
+        switch self {
+        case .page(let page): page.id
+        case .summary(let summary): "summary:\(summary.version)"
+        }
+    }
+}
+
 struct WhatsNewPresentation: Identifiable, Equatable {
     let version: String
     let language: WhatsNewLanguage
-    let pages: [WhatsNewPage]
-    let summary: WhatsNewRepository.ResolvedWhatsNew?
+    let steps: [WhatsNewStep]
 
     var id: String {
-        ([version, "\(language)"] + pages.map(\.id) + [summary == nil ? "-" : "summary"]).joined(separator: "|")
+        ([version, "\(language)"] + steps.map(\.id)).joined(separator: "|")
+    }
+
+    func advanceTitleKey(at step: Int) -> LocalizedStringResource {
+        step == steps.count - 1 ? "whats_new_continue" : "action_next"
     }
 
     static func == (lhs: WhatsNewPresentation, rhs: WhatsNewPresentation) -> Bool {
@@ -22,18 +37,25 @@ enum WhatsNewFlowBuilder {
         version: String,
         language: WhatsNewLanguage,
         releases: [String: [WhatsNewPage]],
-        summary: WhatsNewRepository.ResolvedWhatsNew?,
+        summaries: [WhatsNewRepository.ResolvedWhatsNew],
         isApplicable: (WhatsNewPage) -> Bool
     ) -> WhatsNewPresentation? {
-        let pages = parsed(releases)
-            .filter { release in
-                guard release.version <= current else { return false }
-                if let lastSeen { return lastSeen < release.version }
-                return release.version == current
-            }
-            .flatMap(\.pages)
-            .filter(isApplicable)
-        return make(version: version, language: language, pages: pages, summary: summary)
+        func isShown(_ release: AppVersion) -> Bool {
+            guard release <= current else { return false }
+            if let lastSeen { return lastSeen < release }
+            return release == current
+        }
+        let pageGroups = parsed(releases)
+            .filter { isShown($0.version) }
+            .map { (version: $0.version, withinVersion: 0, steps: $0.pages.filter(isApplicable).map(WhatsNewStep.page)) }
+        let summaryGroups = summaries.compactMap { summary -> (version: AppVersion, withinVersion: Int, steps: [WhatsNewStep])? in
+            guard let summaryVersion = AppVersion(summary.version), isShown(summaryVersion) else { return nil }
+            return (version: summaryVersion, withinVersion: 1, steps: [.summary(summary)])
+        }
+        let steps = (pageGroups + summaryGroups)
+            .sorted { ($0.version, $0.withinVersion) < ($1.version, $1.withinVersion) }
+            .flatMap(\.steps)
+        return make(version: version, language: language, steps: steps)
     }
 
     static func replay(
@@ -87,7 +109,16 @@ enum WhatsNewFlowBuilder {
         pages: [WhatsNewPage],
         summary: WhatsNewRepository.ResolvedWhatsNew?
     ) -> WhatsNewPresentation? {
-        guard !pages.isEmpty || summary != nil else { return nil }
-        return WhatsNewPresentation(version: version, language: language, pages: pages, summary: summary)
+        let summaryStep = summary.map { [WhatsNewStep.summary($0)] } ?? []
+        return make(version: version, language: language, steps: pages.map(WhatsNewStep.page) + summaryStep)
+    }
+
+    private static func make(
+        version: String,
+        language: WhatsNewLanguage,
+        steps: [WhatsNewStep]
+    ) -> WhatsNewPresentation? {
+        guard !steps.isEmpty else { return nil }
+        return WhatsNewPresentation(version: version, language: language, steps: steps)
     }
 }
