@@ -89,6 +89,18 @@ struct MailBodyImageTests {
         #expect(await MailBodyImage.load(svg, in: detail, allowRemoteImages: false) == nil)
     }
 
+    @Test func aPercentEncodedDataImageIsDecodedInTheApp() async throws {
+        let detail = try Self.detail(images: [:])
+        let escaped = Self.png.map { byte in
+            Character(Unicode.Scalar(byte)).isLetter && byte < 0x80 ? String(Unicode.Scalar(byte)) : String(format: "%%%02X", byte)
+        }.joined()
+        #expect(escaped.contains("PNG") && escaped.contains("%89"))
+        #expect(await MailBodyImage.load("data:image/png,\(escaped)", in: detail, allowRemoteImages: false)
+                == MailBodyImage(data: Self.png, filename: "image.png"))
+        let markup = "data:image/png,\(String(decoding: Self.svgMarkup, as: UTF8.self))"
+        #expect(await MailBodyImage.load(markup, in: detail, allowRemoteImages: false) == nil)
+    }
+
     @Test(arguments: ["https://tracker.example/p.png", "http://tracker.example/p.png", "file:///etc/hosts", "javascript:alert(1)"])
     func aRemoteImageIsFetchedOnlyOnceTheReaderAllowedThem(source: String) async throws {
         let detail = try Self.detail(images: [:])
