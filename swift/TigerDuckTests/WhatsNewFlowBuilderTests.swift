@@ -263,3 +263,25 @@ struct WhatsNewFlowBuilderTests {
         )
     }
 }
+
+#if os(iOS)
+extension WhatsNewFlowBuilderTests {
+    @Test
+    func aFewStepsShowEveryDotFullSize() {
+        #expect(WhatsNewPageDots.visibleSteps(count: 9, current: 8) == 0..<9)
+        #expect((0..<9).allSatisfy { WhatsNewPageDots.scale(of: $0, count: 9, current: 8) == 1 })
+    }
+
+    @Test
+    func manyStepsShowAWindowThatShrinksTowardHiddenSteps() {
+        #expect(WhatsNewPageDots.visibleSteps(count: 40, current: 0) == 0..<9)
+        #expect([0, 6, 7, 8].map { WhatsNewPageDots.scale(of: $0, count: 40, current: 0) } == [1, 1, 0.75, 0.5])
+
+        #expect(WhatsNewPageDots.visibleSteps(count: 40, current: 20) == 16..<25)
+        #expect([16, 17, 20, 23, 24].map { WhatsNewPageDots.scale(of: $0, count: 40, current: 20) } == [0.5, 0.75, 1, 0.75, 0.5])
+
+        #expect(WhatsNewPageDots.visibleSteps(count: 40, current: 39) == 31..<40)
+        #expect([31, 32, 39].map { WhatsNewPageDots.scale(of: $0, count: 40, current: 39) } == [0.5, 0.75, 1])
+    }
+}
+#endif

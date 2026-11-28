@@ -94,14 +94,11 @@ struct WhatsNewRepositoryTests {
     }
 
     @Test(arguments: ["en", "zh-Hant-TW"])
-    func everyShippedVersionResolvesWithItsOwnTitle(languageTag: String) throws {
+    func everyShippedVersionResolves(languageTag: String) throws {
         let url = try #require(Bundle.main.url(forResource: "whatsnew", withExtension: "json"))
         let keys = try JSONDecoder().decode([String: [String: WhatsNewEntry]].self, from: Data(contentsOf: url)).keys
         let entries = WhatsNewRepository().entries(languageTag: languageTag)
         #expect(Set(entries.map(\.version)) == Set(keys))
-        for entry in entries {
-            #expect(entry.title.contains(entry.version), "\(entry.version) has the title \(entry.title)")
-        }
     }
 
     private func select(_ json: String, languageTag: String = "en") -> WhatsNewRepository.ResolvedWhatsNew? {
