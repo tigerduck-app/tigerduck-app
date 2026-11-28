@@ -27,6 +27,7 @@ struct NextClassMediumView: View {
 
     @ScaledMetric(relativeTo: .headline) private var nameSize: CGFloat = 17
     @ScaledMetric(relativeTo: .subheadline) private var rowNameSize: CGFloat = 15
+    @Environment(\.appLanguage) private var language
 
     var body: some View {
         Group {
@@ -34,7 +35,7 @@ struct NextClassMediumView: View {
             case .signInRequired:
                 TodayMessage(key: "widget_sign_in", palette: palette)
             case .noMoreClasses:
-                Text(String(localized: "widget_no_more_classes"))
+                Text(language.string("widget_no_more_classes"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(palette.onSurface)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -53,7 +54,7 @@ struct NextClassMediumView: View {
                 layout(block(
                     course: info.course, room: info.classroom, change: info.change, start: info.startTime,
                     end: info.endTime, progress: nil
-                ) { Text(info.day.headline()) })
+                ) { Text(info.day.headline(todayKey: "widget_next_class", in: language)) })
             }
         }
     }
@@ -83,7 +84,7 @@ struct NextClassMediumView: View {
                     .lineLimit(1)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Text(TimeRange.text(start, end))
-                    .accessibilityLabel(TimeRange.spoken(start, end))
+                    .accessibilityLabel(TimeRange.spoken(start, end) { language.string($0) })
                     .font(.footnote.weight(.semibold))
                     .monospacedDigit()
                     .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
@@ -145,7 +146,7 @@ struct NextClassMediumView: View {
                 ink: tile.ink, changeInk: palette.changeInk
             )
             Text(TimeRange.text(info.startTime, info.endTime))
-                .accessibilityLabel(TimeRange.spoken(info.startTime, info.endTime))
+                .accessibilityLabel(TimeRange.spoken(info.startTime, info.endTime) { language.string($0) })
                 .font(.footnote.weight(.semibold))
                 .monospacedDigit()
                 .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)
@@ -166,6 +167,7 @@ struct NextClassSmallView: View {
     let palette: WidgetPalette
 
     @ScaledMetric(relativeTo: .headline) private var nameSize: CGFloat = 17
+    @Environment(\.appLanguage) private var language
 
     static func background(of derived: WidgetDerivedState, palette: WidgetPalette) -> Color {
         switch derived {
@@ -182,22 +184,23 @@ struct NextClassSmallView: View {
             case .signInRequired:
                 TodayMessage(key: "widget_sign_in", palette: palette)
             case .noMoreClasses:
-                Text(String(localized: "widget_no_more_classes"))
+                Text(language.string("widget_no_more_classes"))
                     .font(.subheadline.weight(.bold))
                     .foregroundStyle(palette.onSurface)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             case .ongoing(let infos):
                 let info = infos[0]
-                let label = infos.count > 1 ? "\(String(localized: "widget_ongoing")) +\(infos.count - 1)" : String(localized: "widget_ongoing")
+                let ongoing = language.string("widget_ongoing")
+                let label = infos.count > 1 ? "\(ongoing) +\(infos.count - 1)" : ongoing
                 card(
                     label: label, course: info.course, room: info.classroom, change: info.change,
                     start: info.startTime, end: info.endTime, progress: info.progress
                 )
             case .nextToday(let info), .tomorrowFirst(let info):
                 card(
-                    label: info.day.headline(), course: info.course, room: info.classroom, change: info.change,
-                    start: info.startTime, end: info.endTime, progress: nil
+                    label: info.day.headline(todayKey: "widget_next_class", in: language), course: info.course,
+                    room: info.classroom, change: info.change, start: info.startTime, end: info.endTime, progress: nil
                 )
             }
         }
@@ -232,7 +235,7 @@ struct NextClassSmallView: View {
                     .padding(.bottom, 4)
             }
             Text(end.isEmpty ? start : TimeRange.text(start, end))
-                .accessibilityLabel(end.isEmpty ? start : TimeRange.spoken(start, end))
+                .accessibilityLabel(end.isEmpty ? start : TimeRange.spoken(start, end) { language.string($0) })
                 .font(.caption.weight(.medium))
                 .monospacedDigit()
                 .foregroundStyle(timeChanged ? palette.changeInk : tile.secondaryInk)

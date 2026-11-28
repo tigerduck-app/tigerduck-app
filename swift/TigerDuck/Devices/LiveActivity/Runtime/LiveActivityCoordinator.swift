@@ -109,6 +109,14 @@ final class LiveActivityCoordinator {
         }
     }
 
+    /// An activity draws only when its content arrives, so after a language or locale change, which
+    /// leaves every snapshot as it was, each running one is sent its own content again.
+    func redrawRunningActivities() async {
+        for activity in liveCopies() {
+            await activity.update(activity.content)
+        }
+    }
+
     func endAll() async {
         for activity in Activity<TigerDuckActivityAttributes>.activities {
             await end(activity, reason: "endAll")
@@ -159,11 +167,7 @@ final class LiveActivityCoordinator {
     }
 
     private func endDuplicateActivities() async {
-        let listed = Activity<TigerDuckActivityAttributes>.activities
-        let live = listed.filter {
-            ($0.activityState == .active || $0.activityState == .stale)
-                && !endedActivityIds.contains($0.id)
-        }
+        let live = liveCopies()
         let toEnd = Set(LiveActivityEndRules.duplicateInstanceIdsToEnd(live.map(LiveActivityEndRules.facts(of:))))
         guard !toEnd.isEmpty else { return }
 
@@ -183,6 +187,12 @@ final class LiveActivityCoordinator {
             tasks.cancelTokenWatch(activityId)
             tasks.watchToken(of: keeper)
             scheduleAutomaticEnd(for: activityId, snapshot: keeper.content.state.snapshot)
+        }
+    }
+
+    private func liveCopies() -> [Activity<TigerDuckActivityAttributes>] {
+        Activity<TigerDuckActivityAttributes>.activities.filter {
+            ($0.activityState == .active || $0.activityState == .stale) && !endedActivityIds.contains($0.id)
         }
     }
 

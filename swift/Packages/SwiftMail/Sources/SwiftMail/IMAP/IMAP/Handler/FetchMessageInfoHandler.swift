@@ -313,7 +313,7 @@ final class FetchMessageInfoHandler: BaseIMAPCommandHandler<[MessageInfo]>, IMAP
 
             case .group(let group):
                 let groupName = group.groupName.stringValue.decodeMIMEHeader()
-                let members = group.children.map { formatAddress($0) }.joined(separator: ", ")
+                let members = group.children.map { formatAddress(.singleAddress($0)) }.joined(separator: ", ")
                 return "\(groupName): \(members)"
         }
     }

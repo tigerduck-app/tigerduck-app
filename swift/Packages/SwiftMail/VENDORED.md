@@ -155,6 +155,34 @@ repo rather than consumed as a remote Swift package dependency. License: BSD-2-C
     `.github/workflows`. The pins answer this repository's code scanner, which reads every
     workflow file; a re-vendor that restores the tags restores only that finding.
 
+13. Ported to swift-nio-imap 0.5.0 from 0.4.0, which the app resolved. `Package.swift` requires
+    `from: "0.5.0"` and raises the platforms to that release's minimums, as upstream `main` does:
+    macOS 15, iOS 18, tvOS 18, watchOS 11, visionOS 2 and Mac Catalyst 18. 0.5.0 checks its
+    atom-shaped values when they are built ([release notes](https://github.com/apple/swift-nio-imap/releases/tag/0.5.0)),
+    so each call site decides what an invalid value does:
+    - Command tags. `TaggedCommand` and APPEND's `.start` take a `Command.Tag`. SwiftMail keeps
+      its tags as `String`, as every handler takes them in
+      `IMAPCommandHandler.init(commandTag:promise:)`, and converts them with
+      `Command.Tag(generated:)` (`IMAP/IMAP/Commands/IMAPCommand.swift`). Every tag it sends comes
+      from `IMAPConnection.generateCommandTag()`, so an invalid one is a bug and traps, as in
+      NIOIMAP's own `IMAPCommands`. Patch 5's `FetchMessageInfoRequest.wireCommand(tag:)` only
+      renders a caller's tag, and its documentation says an invalid one traps. The handlers
+      compare a response's tag as `String(tag)`.
+    - `CharacterSetName`. Patch 3's `CHARSET UTF-8` is a literal. The caller's `sortCharset:` is
+      checked in `validate()` of `SearchCommand` and `ExtendedSearchCommand`, so an invalid name
+      fails that one command with `IMAPError.invalidArgument` before anything is sent.
+    - `AuthenticationMechanism` is `.plain` or the `XOAUTH2` literal.
+    - Server values read back: `QuotaResource.Name` as `String(_:)`, and
+      `EmailAddressGroup.children`, which are plain addresses now because the parser flattens
+      nested groups.
+    - `RenameMailboxCommand`'s empty parameters are keyed by `ExtensionKey<Command>`, and
+      `Flag.Keyword("CUSTOM")` is a literal. The upstream fallback that sends an invalid custom
+      keyword as `CUSTOM` (`Flag.toNIO()`, `SearchCriteria`'s keyword criteria) is unchanged.
+
+    Upstream `main` still pins swift-nio-imap to `14ad388`, before these API changes, so a
+    re-vendor has to port it again. Besides the two tests in the table below, the tests changed
+    only where they build these values.
+
 `Package.swift` also drops the upstream CLI demo executables and their demo-only
 dependencies (`swift-dotenv`, `swift-argument-parser`) — TigerDuck links only the
 `SwiftMail` library target.
@@ -199,6 +227,7 @@ What each patch is protected by:
 | 10 (transfer timeouts) | `TigerDuckPatchTests` |
 | 11 (`Reply-To` kept) | `AdditionalHeaderFieldsTests`, plus app-level `MailComposeViewModelTests` |
 | 12 (workflow action pins) | none; the workflow does not run in this repository |
+| 13 (swift-nio-imap 0.5.0) | compile-time, plus `SearchCommandTests.testInvalidSortCharsetFailsValidation` and `FetchMessageInfoHandlerTests.testEnvelopeGroupsListTheirMembers` |
 
 To move to a newer upstream:
 

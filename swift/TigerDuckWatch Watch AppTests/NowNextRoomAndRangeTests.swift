@@ -32,7 +32,7 @@ struct NowNextRoomAndRangeTests {
     }
 
     private let policy = WatchVisualStylePolicy(preset: .default)
-    private let zh = WatchLanguage(tag: "zh-Hant")
+    private let zh = AppLanguage(tag: "zh-Hant")
 
     @Test func thePageCaptionsEachClassWithItsRange() {
         #expect(ClassCard(title: "現在", course: course(), span: nil, policy: policy, language: zh).caption == "現在 · 10:20–12:10")

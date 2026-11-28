@@ -107,6 +107,17 @@ struct PagerTests {
         }
     }
 
+    /// The scroll view waits for the pager to appear, which must not cost a frame without pages.
+    @Test func theFirstLayoutHoldsThePages() throws {
+        let scene = try #require(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let window = UIWindow(windowScene: scene)
+        defer { window.isHidden = true }
+        window.rootViewController = UIHostingController(rootView: Host(pager: Probe()))
+        window.isHidden = false
+        window.layoutIfNeeded()
+        #expect(!window.descendants(ofType: UIScrollView.self).isEmpty)
+    }
+
     @Test func theVisiblePagesAreBothPagesInADragAndOneAtRest() async throws {
         let pager = Probe()
         let (window, scrollView) = try await host(Host(pager: pager))

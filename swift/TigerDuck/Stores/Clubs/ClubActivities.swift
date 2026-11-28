@@ -37,6 +37,7 @@ final class ClubActivities {
     @ObservationIgnored private let directory: ClubDirectory
     @ObservationIgnored private var etag: String?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var demoGeneration = 0
 
     init(
         files: ClubFiles = ClubFiles(),
@@ -48,10 +49,22 @@ final class ClubActivities {
         self.client = client
         self.subscriptions = subscriptions
         self.directory = directory
-        if let stored = files.loadActivities(), let read = try? ClubAPIList<ClubActivity>.decode(stored.body) {
-            activities = read
-            etag = stored.etag
-        }
+        showStored()
+    }
+
+    func showStored() {
+        let stored = files.loadActivities()
+        let read = stored.flatMap { try? ClubAPIList<ClubActivity>.decode($0.body) }
+        etag = read == nil ? nil : stored?.etag
+        if (read ?? []) != activities { activities = read ?? [] }
+    }
+
+    /// The demo account's activities, which no server sends; the stored copy stays on disk, and a
+    /// fetch already under way keeps nothing.
+    func show(_ activities: [ClubActivity]) {
+        demoGeneration += 1
+        etag = nil
+        if activities != self.activities { self.activities = activities }
     }
 
     /// Asks whether the feed changed since the stored copy; a call during a fetch waits for it. A
@@ -65,8 +78,9 @@ final class ClubActivities {
     }
 
     private func fetch() async {
+        let generation = demoGeneration
         do {
-            guard let copy = try await client.activities(etag: etag) else { return }
+            guard let copy = try await client.activities(etag: etag), generation == demoGeneration else { return }
             let read = try ClubAPIList<ClubActivity>.decode(copy.body)
             files.saveActivities(copy)
             etag = copy.etag

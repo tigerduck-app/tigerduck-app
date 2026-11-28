@@ -7,7 +7,7 @@ struct DemoAccount: AccountScoped {
     let fixture: DemoFixture?
     var stores = DemoStores()
     var language: () -> DemoLanguage = { .shown }
-    var now: () -> Date = { Date() }
+    var now: () -> Date = { AppClock.now() }
 
     static let app = DemoAccount(fixture: .bundled)
 
@@ -20,6 +20,7 @@ struct DemoAccount: AccountScoped {
         let signIn = session.startDemoSignIn()
         Defaults[stores.demoSignedIn, for: signIn] = true
         stores.turnOffSync(signIn)
+        stores.statuses.showDemo(for: signIn)
         return signIn
     }
 
@@ -28,6 +29,7 @@ struct DemoAccount: AccountScoped {
         NTUSTSessionManager.shared.markLoginSuccess(for: signIn)
         write(fixture, for: signIn)
         importClassmates(of: fixture, for: signIn)
+        for club in fixture.clubs ?? [] where club.subscribed == true { stores.subscribeClub(club.id, signIn) }
         if fixture.libraryQr?.fakeLoggedIn == true, !stores.libraryIsKept() {
             stores.signInLibrary(fixture.normalizedStudentId, fixture.libraryPassword)
         }
@@ -42,14 +44,17 @@ struct DemoAccount: AccountScoped {
         guard let fixture else { return }
         let current = session.signIns.currentSignIn
         guard let kept = storedAccountIsDemoIfReadable() else {
-            if Defaults[stores.demoSignedIn], !current.isDemo { startSignIn(in: session) }
+            if Defaults[stores.demoSignedIn], !current.isDemo {
+                startSignIn(in: session)
+                showClubs(of: fixture)
+            }
             return
         }
         if kept, !current.isDemo {
             write(fixture, for: startSignIn(in: session))
-        } else if !kept {
-            if Defaults[stores.demoSignedIn] { Defaults.reset(stores.demoSignedIn) }
+        } else if !kept, Defaults[stores.demoSignedIn] || current.isDemo {
             if current.isDemo { session.endSignIn() }
+            leave(for: session.signIns.currentSignIn, afterCurrentDemo: current.isDemo)
         }
     }
 
@@ -68,12 +73,16 @@ struct DemoAccount: AccountScoped {
         Defaults.reset(.demoSignedIn)
     }
 
-    func leave() {
+    /// Ends what the demo keeps outside the stores a sign-out clears, writing for `signIn`, the one
+    /// after the demo's. Each step can run again, and the demo stays marked until the last, so the
+    /// next launch's `resume` finishes an end cut short.
+    func leave(for signIn: SignIn, afterCurrentDemo: Bool) {
+        if afterCurrentDemo { stores.statuses.reset() }
+        stores.keepCourseChanges(Data())
+        stores.dropClubs((fixture?.clubs ?? []).map(\.id), afterCurrentDemo, signIn)
+        if let fixture { stores.dropScores(fixture.normalizedStudentId) }
+        stores.signOutServices()
         Defaults.reset(stores.demoSignedIn)
-        if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
-        #if os(iOS)
-        if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
-        #endif
     }
 
     func write(_ fixture: DemoFixture, for signIn: SignIn) {
@@ -92,7 +101,21 @@ struct DemoAccount: AccountScoped {
         let kept = context.assignments.loadCalendarEvents().filter { $0.source == .moodle }
         _ = context.assignments.saveCalendarEvents(kept + school, for: signIn)
         stores.keepBulletins((fixture.bulletins ?? []).enumerated().map { $1.detail(index: $0) }, signIn)
-        for server in ServerKind.allCases { stores.statuses.set(.ok, for: server) }
+        let changes = CourseChangesDTO(term: semester, changes: (fixture.courseChanges ?? []).map { $0.row(from: now()) })
+        stores.keepCourseChanges((try? JSONEncoder().encode(changes)) ?? Data())
+        let enrolled = (fixture.courses ?? []).compactMap(\.credits).reduce(0, +)
+        if let scores = fixture.scores?.report(in: language, currentTerm: semester, enrolledCredits: enrolled) {
+            stores.keepScores(scores, fixture.normalizedStudentId, signIn)
+        }
+        showClubs(of: fixture)
+    }
+
+    /// The clubs live in memory only, so a launch behind the lock screen, which writes nothing else,
+    /// shows them again.
+    private func showClubs(of fixture: DemoFixture) {
+        let language = language()
+        let clubs = fixture.clubs ?? []
+        stores.showClubs(clubs.map { $0.card(in: language) }, clubs.flatMap { $0.activities(in: language, from: now()) })
     }
 
     private func writeCourses(
@@ -148,6 +171,27 @@ struct DemoStores {
     var keepBulletins: (_ bulletins: [BulletinAPI.BulletinDetail], _ signIn: SignIn) -> Void = {
         BulletinFeed.keep($0, for: $1)
     }
+    var keepCourseChanges: (_ feed: Data) -> Void = { CourseChangeStore.shared.replaceFeed($0) }
+    var keepScores: (_ report: ScoreReport, _ studentId: String, _ signIn: SignIn) -> Void = {
+        NTUSTScoreService.keep($0, studentId: $1, for: $2)
+    }
+    var showClubs: (_ clubs: [ClubCard], _ activities: [ClubActivity]) -> Void = {
+        ClubDirectory.shared.show($0)
+        ClubActivities.shared.show($1)
+    }
+    var dropClubs: (_ ids: [Int], _ withUnsentMark: Bool, _ signIn: SignIn) -> Void = {
+        ClubSubscriptions.shared.forget($0, withUnsentMark: $1, for: $2)
+        ClubDirectory.shared.showStored()
+        ClubActivities.shared.showStored()
+    }
+    var dropScores: (_ studentId: String) -> Void = { NTUSTScoreService.invalidateCache(studentId: $0) }
+    var signOutServices: () -> Void = {
+        if LibraryService.keepsDemoLibrary { LibraryService.signOutLibraryOnly() }
+        #if os(iOS)
+        if MailAccountManager.shared.isDemo { MailAccountManager.shared.logout() }
+        #endif
+    }
+    var subscribeClub: (_ id: Int, _ signIn: SignIn) -> Void = { ClubSubscriptions.shared.subscribe($0, for: $1) }
     var turnOffSync: (SignIn) -> Void = { CloudSyncPreference.turnOffForDemo($0) }
     var libraryIsKept: () -> Bool = { LibraryService.storedUsername != nil }
     var signInLibrary: (_ username: String, _ password: String) -> Void = {

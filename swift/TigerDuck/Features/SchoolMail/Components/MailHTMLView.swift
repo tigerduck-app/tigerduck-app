@@ -8,10 +8,13 @@ struct MailHTMLView: UIViewRepresentable {
     let inlineImages: [String: MailInlineImage]
     let allowRemoteImages: Bool
     var theme: MailHTMLTheme = .app
+    var textZoom = PageZoom.standard
     @Binding var contentHeight: CGFloat
     let onLinkTap: (Int) -> Void
     /// False when a load starts, true once it finishes or fails.
     var onLoadedChange: (Bool) -> Void = { _ in }
+    /// The `src` of an image outside any link, as the page has it.
+    var onImageTap: (String) -> Void = { _ in }
 
     nonisolated static let maximumContentHeight: CGFloat = 50_000
 
@@ -32,6 +35,10 @@ struct MailHTMLView: UIViewRepresentable {
         webView.isOpaque = false
         Self.paint(webView, with: theme)
         context.coordinator.observeHeight(of: webView)
+        let tap = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.tapped(_:)))
+        tap.cancelsTouchesInView = false
+        tap.delegate = context.coordinator
+        webView.addGestureRecognizer(tap)
         context.coordinator.load(into: webView)
         return webView
     }
@@ -39,6 +46,7 @@ struct MailHTMLView: UIViewRepresentable {
     func updateUIView(_ webView: WKWebView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.load(into: webView)
+        context.coordinator.applyTextZoom(to: webView)
     }
 
     static func paint(_ webView: WKWebView, with theme: MailHTMLTheme) {
@@ -47,7 +55,7 @@ struct MailHTMLView: UIViewRepresentable {
         webView.underPageBackgroundColor = theme.backgroundColor
     }
 
-    final class Coordinator: NSObject, WKNavigationDelegate {
+    final class Coordinator: NSObject, WKNavigationDelegate, UIGestureRecognizerDelegate {
         var parent: MailHTMLView
         let cidHandler: MailCIDSchemeHandler
         private(set) var loadedKey: String?
@@ -57,6 +65,7 @@ struct MailHTMLView: UIViewRepresentable {
         private(set) var loadTask: Task<Void, Never>?
         private(set) var installedRulesAllowRemoteImages: Bool?
         private var heightObservation: NSKeyValueObservation?
+        private var zoomOnPage = PageZoom.standard
 
         init(parent: MailHTMLView) {
             self.parent = parent
@@ -71,9 +80,9 @@ struct MailHTMLView: UIViewRepresentable {
         /// strong reference the `Task` can capture, which is dropped again as soon as that hop
         /// finishes — the observation itself still holds nothing.
         func observeHeight(of webView: WKWebView) {
-            heightObservation = webView.scrollView.observe(\.contentSize, options: [.new]) { [weak self] _, change in
-                guard let self, let height = change.newValue?.height else { return }
-                Task { @MainActor in self.parent.contentHeight = MailHTMLView.clampedHeight(height) }
+            heightObservation = webView.scrollView.observe(\.contentSize, options: [.new]) { [weak self, weak webView] _, _ in
+                guard let self, let webView else { return }
+                Task { @MainActor in self.fitHeight(of: webView) }
             }
         }
 
@@ -86,8 +95,9 @@ struct MailHTMLView: UIViewRepresentable {
             // Outside the view update this runs in.
             Task { @MainActor [weak self] in self?.parent.onLoadedChange(false) }
             let theme = parent.theme
+            zoomOnPage = parent.textZoom
             let document = MailWebViewFactory.document(for: parent.html, allowRemoteImages: parent.allowRemoteImages,
-                                                       theme: theme)
+                                                       theme: theme, textZoom: zoomOnPage)
             let allowImages = parent.allowRemoteImages
             loadTask?.cancel()
             currentNavigation = nil
@@ -110,15 +120,15 @@ struct MailHTMLView: UIViewRepresentable {
         }
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
-            finish(navigation)
+            finish(navigation, in: webView)
         }
 
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-            finish(navigation)
+            finish(navigation, in: webView)
         }
 
         func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-            finish(navigation)
+            finish(navigation, in: webView)
         }
 
         func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
@@ -126,10 +136,51 @@ struct MailHTMLView: UIViewRepresentable {
             parent.onLoadedChange(true)
         }
 
-        private func finish(_ navigation: WKNavigation?) {
+        private func finish(_ navigation: WKNavigation?, in webView: WKWebView) {
             guard let navigation, navigation === currentNavigation else { return }
             currentNavigation = nil
             parent.onLoadedChange(true)
+            fitHeight(of: webView)
+        }
+
+        func applyTextZoom(to webView: WKWebView) {
+            guard parent.textZoom != zoomOnPage else { return }
+            fitHeight(of: webView)
+        }
+
+        func fitHeight(of webView: WKWebView) {
+            let zoom = parent.textZoom
+            zoomOnPage = zoom
+            let generation = loadGeneration
+            Task { @MainActor [weak self] in
+                let height = try? await webView.callAsyncJavaScript(
+                    MailWebViewFactory.zoomAndMeasure, arguments: ["zoom": zoom], in: nil, contentWorld: .defaultClient
+                ) as? Double
+                guard let self, let height, generation == self.loadGeneration else { return }
+                self.parent.contentHeight = MailHTMLView.clampedHeight(height.rounded(.up))
+            }
+        }
+
+        /// WebKit's own taps, a link's among them, still run.
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
+
+        @objc func tapped(_ recognizer: UITapGestureRecognizer) {
+            guard let webView = recognizer.view as? WKWebView else { return }
+            let point = recognizer.location(in: webView.scrollView)
+            Task { @MainActor [weak self] in
+                guard let source = await Self.imageSource(at: point, in: webView) else { return }
+                self?.parent.onImageTap(source)
+            }
+        }
+
+        /// `point` is in the scroll view's content, the page's coordinates at the page's scale of 1.
+        static func imageSource(at point: CGPoint, in webView: WKWebView) async -> String? {
+            let found = try? await webView.callAsyncJavaScript(
+                MailWebViewFactory.imageAtPoint, arguments: ["x": Double(point.x), "y": Double(point.y)],
+                in: nil, contentWorld: .defaultClient
+            )
+            return found as? String
         }
 
         func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {

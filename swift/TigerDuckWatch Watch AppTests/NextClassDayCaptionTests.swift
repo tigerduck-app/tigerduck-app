@@ -24,12 +24,12 @@ struct NextClassDayCaptionTests {
 
     private var tue: String { String(localized: "weekday_tue_caption") }
 
-    private let system = WatchLanguage(tag: nil)
+    private let system = AppLanguage(tag: nil)
 
     @Test func headline_namesTheDayTheClassMeets() {
-        #expect(NextClassResolver.Day.today.headline(in: system) == String(localized: "watch_next"))
-        #expect(NextClassResolver.Day.tomorrow.headline(in: system) == String(localized: "widget_tomorrow"))
-        #expect(NextClassResolver.Day.later(weekday: 2).headline(in: system) == tue)
+        #expect(NextClassResolver.Day.today.headline(todayKey: "watch_next", in: system) == String(localized: "watch_next"))
+        #expect(NextClassResolver.Day.tomorrow.headline(todayKey: "watch_next", in: system) == String(localized: "widget_tomorrow"))
+        #expect(NextClassResolver.Day.later(weekday: 2).headline(todayKey: "watch_next", in: system) == tue)
     }
 
     @Test(arguments: zip(1...7, [
@@ -38,7 +38,7 @@ struct NextClassDayCaptionTests {
     ]))
     func aLaterDay_isNamedByItsWeekday(weekday: Int, key: String) {
         let name = String(localized: String.LocalizationValue(key))
-        #expect(NextClassResolver.Day.later(weekday: weekday).headline(in: system) == name)
+        #expect(NextClassResolver.Day.later(weekday: weekday).headline(todayKey: "watch_next", in: system) == name)
         #expect(NextClassResolver.Day.later(weekday: weekday).inlineCaption("08:10", in: system) == "\(name) 08:10")
     }
 
@@ -66,14 +66,14 @@ struct NextClassDayCaptionTests {
     }
 
     @Test func theCaptionsFollowTheLanguageChosenOnThePhone() throws {
-        let zh = WatchLanguage(tag: "zh-Hant")
+        let zh = AppLanguage(tag: "zh-Hant")
         let tue = try localizedValue("weekday_tue_caption", in: "zh-Hant")
         let tomorrow = String(format: try localizedValue("widget_tomorrow_time", in: "zh-Hant"), "08:10")
         #expect(try localizedValue("widget_tomorrow", in: "zh-Hant") != localizedValue("widget_tomorrow", in: "en"))
 
-        #expect(NextClassResolver.Day.today.headline(in: zh) == (try localizedValue("watch_next", in: "zh-Hant")))
-        #expect(NextClassResolver.Day.tomorrow.headline(in: zh) == (try localizedValue("widget_tomorrow", in: "zh-Hant")))
-        #expect(NextClassResolver.Day.later(weekday: 2).headline(in: zh) == tue)
+        #expect(NextClassResolver.Day.today.headline(todayKey: "watch_next", in: zh) == (try localizedValue("watch_next", in: "zh-Hant")))
+        #expect(NextClassResolver.Day.tomorrow.headline(todayKey: "watch_next", in: zh) == (try localizedValue("widget_tomorrow", in: "zh-Hant")))
+        #expect(NextClassResolver.Day.later(weekday: 2).headline(todayKey: "watch_next", in: zh) == tue)
         #expect(NextClassResolver.Day.tomorrow.inlineCaption("08:10", in: zh) == tomorrow)
         #expect(NextClassResolver.Day.later(weekday: 2).inlineCaption("08:10", in: zh) == "\(tue) 08:10")
     }

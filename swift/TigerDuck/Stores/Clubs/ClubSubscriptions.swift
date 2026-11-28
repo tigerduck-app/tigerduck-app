@@ -35,6 +35,17 @@ final class ClubSubscriptions: AccountScoped {
         document = ClubSubscriptionsDocument()
     }
 
+    /// Drops these clubs, saved and in memory, and the unsent mark too `withUnsentMark`, leaving the
+    /// others: the demo account's made-up clubs, which no server holds.
+    func forget(_ ids: [Int], withUnsentMark: Bool, for signIn: SignIn) {
+        guard signIn.isCurrent else { return }
+        var next = document
+        for id in ids { next.clubs[id] = nil }
+        next.order?.value.removeAll { ids.contains($0) }
+        if next != document { save(next, for: signIn) }
+        if withUnsentMark { Defaults[.clubSubscriptionsPushPending, for: signIn] = false }
+    }
+
     /// The subscribed clubs, highest priority first.
     var subscribedIDs: [Int] { document.subscribedIDs }
 

@@ -1,5 +1,6 @@
 import SwiftUI
 import WidgetKit
+import TigerDuckCore
 
 struct NextClassWidget: Widget {
     let kind: String = "NextClassWidget"
@@ -16,13 +17,13 @@ struct NextClassWidget: Widget {
         .supportedFamilies([.accessoryCircular, .accessoryRectangular, .accessoryInline, .accessoryCorner])
     }
 
-    private static func snapshotLanguage() -> WatchLanguage {
+    private static func snapshotLanguage() -> AppLanguage {
         let url = SharedAppGroup.snapshotFileURL
         guard FileManager.default.fileExists(atPath: url.path),
               let data = try? Data(contentsOf: url),
               let snap = try? JSONDecoder().decode(WatchSnapshot.self, from: data)
-        else { return WatchLanguage(tag: nil) }
-        return WatchLanguage(tag: snap.languageTag)
+        else { return AppLanguage(tag: nil) }
+        return AppLanguage(tag: snap.languageTag)
     }
 }
 

@@ -48,6 +48,24 @@ extension IMAPCommand {
     }
 }
 
+extension Command.Tag {
+    /// NIOIMAP writes a tag verbatim, so `Command.Tag` rejects any that is not RFC 3501's `tag`.
+    /// Every tag SwiftMail sends comes from `IMAPConnection.generateCommandTag()`, never from the
+    /// server, so an invalid one is a bug, as it is in NIOIMAP's own `IMAPCommands`.
+    init(generated tag: String) {
+        guard let validTag = Command.Tag(tag) else {
+            preconditionFailure("Invalid command tag: \(String(reflecting: tag))")
+        }
+        self = validTag
+    }
+}
+
+extension TaggedCommand {
+    init(tag: String, command: Command) {
+        self.init(tag: Command.Tag(generated: tag), command: command)
+    }
+}
+
 extension IMAPTaggedCommand {
     func send(on channel: Channel, tag: String) async throws {
         let taggedCommand = toTaggedCommand(tag: tag)

@@ -1,6 +1,7 @@
 import XCTest
 import WatchKit
 import WidgetKit
+import TigerDuckCore
 @testable import TigerDuckWatch_Watch_App
 
 final class ScheduleStoreTests: XCTestCase {
@@ -88,7 +89,7 @@ final class ScheduleStoreTests: XCTestCase {
         let entry = provider.timeline(for: provider.loadSnapshot(), now: Date()).entries.first
         XCTAssertEqual(reloads, 1)
         XCTAssertEqual(entry?.languageTag, "zh-Hant")
-        XCTAssertEqual(store.language, WatchLanguage(tag: "zh-Hant"))
+        XCTAssertEqual(store.language, AppLanguage(tag: "zh-Hant"))
     }
 
     func test_theComplicationReadsTheAppGroupFileTheWatchAppWrites() {

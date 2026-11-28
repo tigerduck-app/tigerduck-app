@@ -2,17 +2,20 @@ import Foundation
 
 enum SchoolRefresh {
     /// Shows the loading state; false, with the offline error shown instead, without a network.
-    static func begin() async -> Bool {
+    static func begin(for signIn: SignIn) async -> Bool {
         guard await NetworkMonitor.shared.isReachable() else {
-            showOffline()
+            showOffline(for: signIn)
             return false
         }
         NTUSTSessionManager.shared.loadingState = .loading
         return true
     }
 
-    static func showOffline() {
-        NTUSTSessionManager.shared.loadingState = .error(String(localized: "error_network_unavailable"))
+    /// The demo shows its bundled data as loaded, replacing an error an earlier account left, since
+    /// `DemoRequestRefusal` refuses its every request, the reachability probe's too.
+    static func showOffline(for signIn: SignIn, on indicator: any LoadingIndicator = NTUSTSessionManager.shared) {
+        guard signIn.isCurrent else { return }
+        indicator.loadingState = signIn.isDemo ? .loaded : .error(String(localized: "error_network_unavailable"))
     }
 
     static func end() {

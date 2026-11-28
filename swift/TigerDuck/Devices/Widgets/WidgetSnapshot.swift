@@ -18,7 +18,6 @@ nonisolated struct WidgetSnapshot: Codable, Equatable, Hashable, Sendable {
     static let currentVersion = 1
     static let storeKey = "Widget-snapshot-v1"
     static let peopleStoreKey = "Widget-people-v1"
-    static let appGroupIdentifier = "group.org.ntust.app.TigerDuck"
 }
 
 nonisolated struct WidgetPersonSnapshot: Codable, Equatable, Hashable, Sendable {

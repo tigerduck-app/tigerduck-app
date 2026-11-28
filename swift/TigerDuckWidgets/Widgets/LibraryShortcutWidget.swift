@@ -49,6 +49,7 @@ struct LibraryShortcutWidgetView: View {
         LibraryShortcutView(palette: palette)
             .containerBackground(palette.background, for: .widget)
             .widgetURL(AppLink.libraryPass)
+            .appLanguage(AppLanguageStore().read())
     }
 
     private static let fallbackSnapshot = WidgetSnapshot(

@@ -23,9 +23,9 @@ final class ClubDirectory {
     @ObservationIgnored private let client: ClubAPIClient
     @ObservationIgnored private let chinese: () -> Bool
     @ObservationIgnored private let now: () -> Date
-    @ObservationIgnored private var storedAt: Date?
-    @ObservationIgnored private var freshness = FreshnessPolicy(lifetime: 0)
+    @ObservationIgnored private var stored: (at: Date, freshness: FreshnessPolicy)?
     @ObservationIgnored private var refreshTask: Task<Void, Never>?
+    @ObservationIgnored private var demoGeneration = 0
 
     init(
         files: ClubFiles = ClubFiles(),
@@ -37,9 +37,28 @@ final class ClubDirectory {
         self.client = client
         self.chinese = chinese
         self.now = now
-        if let stored = files.loadDirectory(), let read = try? ClubAPIList<ClubCard>.decode(stored.body) {
-            take(read, storedAt: stored.storedAt, maxAge: stored.maxAge)
+        showStored()
+    }
+
+    func showStored() {
+        failure = nil
+        isUnderMaintenance = false
+        guard let file = files.loadDirectory(), let read = try? ClubAPIList<ClubCard>.decode(file.body) else {
+            stored = nil
+            if !clubs.isEmpty { clubs = [] }
+            return
         }
+        take(read, storedAt: file.storedAt, maxAge: file.maxAge)
+    }
+
+    /// The demo account's directory, which no server sends. It counts as fresh for the longest
+    /// `max-age`, so no refresh asks for another, and leaves the stored answer on disk. A fetch
+    /// already under way keeps nothing.
+    func show(_ clubs: [ClubCard]) {
+        demoGeneration += 1
+        take(clubs, storedAt: now(), maxAge: ClubAPIClient.longestMaxAge)
+        failure = nil
+        isUnderMaintenance = false
     }
 
     func club(_ id: Int) -> ClubCard? {
@@ -59,7 +78,7 @@ final class ClubDirectory {
     /// fetch waits for it. A failed fetch keeps the stored answer.
     func refresh() async {
         if let refreshTask { return await refreshTask.value }
-        if let storedAt, freshness.isFresh(storedAt: storedAt, now: now()) { return }
+        if let stored, stored.freshness.isFresh(storedAt: stored.at, now: now()) { return }
         let task = Task { await fetch() }
         refreshTask = task
         await task.value
@@ -67,8 +86,10 @@ final class ClubDirectory {
     }
 
     private func fetch() async {
+        let generation = demoGeneration
         do {
             let answer = try await client.clubs()
+            guard generation == demoGeneration else { return }
             let read = try ClubAPIList<ClubCard>.decode(answer.body)
             let storedAt = now()
             files.saveDirectory(ClubFiles.StoredDirectory(body: answer.body, storedAt: storedAt, maxAge: answer.maxAge))
@@ -76,7 +97,7 @@ final class ClubDirectory {
             failure = nil
             isUnderMaintenance = false
         } catch {
-            if !AppLogger.isCancellation(error) {
+            if !AppLogger.isCancellation(error), generation == demoGeneration {
                 failure = error
                 isUnderMaintenance = ClubAPIClient.isMaintenance(error, at: now())
             }
@@ -87,8 +108,7 @@ final class ClubDirectory {
     }
 
     private func take(_ read: [ClubCard], storedAt: Date, maxAge: TimeInterval) {
-        self.storedAt = storedAt
-        freshness = FreshnessPolicy(lifetime: maxAge)
+        stored = (storedAt, FreshnessPolicy(lifetime: maxAge))
         let listed = Self.listed(read, chinese: chinese())
         if listed != clubs { clubs = listed }
     }

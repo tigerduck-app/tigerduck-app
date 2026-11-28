@@ -1,3 +1,4 @@
+import TigerDuckCore
 import XCTest
 @testable import TigerDuck
 
@@ -59,5 +60,11 @@ final class LanguageManagerTests: XCTestCase {
         XCTAssertEqual(LanguageManager.displayName(for: "ja"), "日本語")
         XCTAssertEqual(LanguageManager.displayName(for: "de"), "Deutsch")
         XCTAssertEqual(LanguageManager.displayName(for: "fr"), "Français")
+    }
+
+    func test_language_ofSystem_leavesTheDevicesLanguage_andATagIsKept() {
+        XCTAssertEqual(LanguageManager.language(of: LanguageManager.system), AppLanguage(tag: nil))
+        XCTAssertEqual(LanguageManager.language(of: "zh-Hant"), AppLanguage(tag: "zh-Hant"))
+        XCTAssertEqual(LanguageManager.language(of: "en"), AppLanguage(tag: "en"))
     }
 }

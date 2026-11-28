@@ -119,5 +119,23 @@ enum MailMessageActions {
             return nil
         }
     }
+
+    /// The key an image's download takes in `downloading`, which no attachment's section number can be.
+    static func downloadKey(ofImage source: String) -> String { "image \(source)" }
+
+    static func prepareImage(_ source: String, model: MailMessageViewModel) async -> URL? {
+        let key = downloadKey(ofImage: source)
+        guard let detail = model.detail, !model.downloading.contains(key) else { return nil }
+        model.activity.downloading.insert(key)
+        defer { model.activity.downloading.remove(key) }
+        let cache = model.stores.cache
+        let wipeCount = cache.wipeCount
+        guard let image = await MailBodyImage.load(source, in: detail, allowRemoteImages: model.allowRemoteImages) else {
+            return nil
+        }
+        return try? await Task.detached {
+            try cache.saveAttachment(image.data, filename: image.filename, unlessWipedSince: wipeCount)
+        }.value
+    }
 }
 #endif

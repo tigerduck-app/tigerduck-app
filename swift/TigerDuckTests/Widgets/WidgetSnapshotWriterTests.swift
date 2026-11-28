@@ -36,6 +36,40 @@ struct WidgetSnapshotWriterTests {
         withExtendedLifetime(writer) {}
     }
 
+    @MainActor
+    private final class Settings {
+        var appLanguage = LanguageManager.system
+    }
+
+    @Test func aNewLanguageAloneIsWrittenForTheWidgetsAndReloadsThem() throws {
+        let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
+        defer { UserDefaults().removePersistentDomain(forName: suite) }
+        let store = WidgetSnapshotStore(appGroupIdentifier: suite)
+        let coordinator = WidgetReloadCoordinator(reloader: NoReload())
+        let settings = Settings()
+        let writer = WidgetSnapshotWriter(
+            isLoggedIn: { true },
+            accentColorHex: { 0x007AFF },
+            language: { LanguageManager.language(of: settings.appLanguage) },
+            store: store,
+            coordinator: coordinator
+        )
+        writer.regenerate()
+        #expect(store.language.read().tag == nil)
+
+        for appLanguage in ["zh-Hant", "en", LanguageManager.system] {
+            let reload = try #require(coordinator.pendingTask)
+            settings.appLanguage = appLanguage
+            writer.regenerate()
+
+            #expect(store.language.read() == LanguageManager.language(of: appLanguage))
+            #expect(coordinator.pendingTask != reload, "\(appLanguage)")
+        }
+        let reload = coordinator.pendingTask
+        writer.regenerate()
+        #expect(coordinator.pendingTask == reload)
+    }
+
     @Test func aReloadNowSendsTheChangedSnapshotsReloadWithoutTheDebounce() async throws {
         let suite = "WidgetSnapshotWriterTests.\(UUID().uuidString)"
         defer { UserDefaults().removePersistentDomain(forName: suite) }

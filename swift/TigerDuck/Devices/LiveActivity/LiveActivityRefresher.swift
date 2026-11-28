@@ -75,9 +75,12 @@ final class LiveActivityRefresher {
     var isAvailable: Bool {
         effectiveLiveActivityEnabled(
             isLiveActivityEnabled: preferences.isLiveActivityEnabled,
-            cloudSyncEnabled: app.cloudSyncEnabled
+            cloudSyncEnabled: app.cloudSyncEnabled,
+            isDemo: isDemo
         )
     }
+
+    private var isDemo: Bool { app.authService.session.currentSignIn.isDemo }
 
     func refresh() async {
         let now = AppClock.now()
@@ -88,6 +91,7 @@ final class LiveActivityRefresher {
             assignments: assignments,
             preferences: preferences,
             cloudSyncEnabled: app.cloudSyncEnabled,
+            isDemo: isDemo,
             accentHex: app.preferences.accentColorHex,
             now: now,
             calendar: AcademicCalendarStore.shared.calendar,

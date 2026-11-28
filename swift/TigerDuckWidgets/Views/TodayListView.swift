@@ -7,6 +7,7 @@ struct TodayView: View {
     let now: Date
     let palette: WidgetPalette
     let family: WidgetFamily
+    @Environment(\.appLanguage) private var language
 
     var body: some View {
         Group {
@@ -36,7 +37,7 @@ struct TodayView: View {
                     .fill(palette.onSurfaceVariant.opacity(0.2))
                     .frame(width: 1)
                 TodayColumn(
-                    day: tomorrow, title: String(localized: "widget_tomorrow"), rows: tomorrowRows, palette: palette
+                    day: tomorrow, title: language.string("widget_tomorrow"), rows: tomorrowRows, palette: palette
                 )
             }
         }
@@ -46,9 +47,10 @@ struct TodayView: View {
 struct TodayMessage: View {
     let key: LocalizedStringResource
     let palette: WidgetPalette
+    @Environment(\.appLanguage) private var language
 
     var body: some View {
-        Text(key)
+        Text(language.string(key))
             .font(.callout)
             .foregroundStyle(palette.onSurfaceVariant)
             .multilineTextAlignment(.center)
@@ -94,6 +96,7 @@ private struct TodayColumnRow: View {
     let palette: WidgetPalette
 
     @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 15
+    @Environment(\.appLanguage) private var language
 
     var body: some View {
         let row = item.row
@@ -111,7 +114,7 @@ private struct TodayColumnRow: View {
             .monospacedDigit()
             .fixedSize()
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(TimeRange.spoken(row.startTime, row.endTime))
+            .accessibilityLabel(TimeRange.spoken(row.startTime, row.endTime) { language.string($0) })
             VStack(alignment: .leading, spacing: 4) {
                 NameRoomLine(
                     name: row.course.displayName, room: row.classroom, roomChanged: row.change?.room != nil,
@@ -120,7 +123,7 @@ private struct TodayColumnRow: View {
                     roomFont: .subheadline.weight(.bold), ink: tile.ink, changeInk: palette.changeInk
                 )
                 if row.isCancelled {
-                    Text(String(localized: "course_card_cancelled"))
+                    Text(language.string("course_card_cancelled"))
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(tile.secondaryInk)
                 } else if let progress = item.progress {
@@ -200,6 +203,7 @@ struct TodayTimelineView: View {
 
     @ScaledMetric(relativeTo: .subheadline) private var nameSize: CGFloat = 15
     @ScaledMetric(relativeTo: .footnote) private var shortNameSize: CGFloat = 13
+    @Environment(\.appLanguage) private var language
     private let gutter: CGFloat = 34
 
     var body: some View {
@@ -286,9 +290,10 @@ struct TodayTimelineView: View {
         VStack(alignment: .leading, spacing: 2) {
             line
             if tall {
-                Text(row.isCancelled ? String(localized: "course_card_cancelled") : TimeRange.text(row.startTime, row.endTime))
+                let cancelled = language.string("course_card_cancelled")
+                Text(row.isCancelled ? cancelled : TimeRange.text(row.startTime, row.endTime))
                     .accessibilityLabel(
-                        row.isCancelled ? String(localized: "course_card_cancelled") : TimeRange.spoken(row.startTime, row.endTime)
+                        row.isCancelled ? cancelled : TimeRange.spoken(row.startTime, row.endTime) { language.string($0) }
                     )
                     .font(.caption)
                     .monospacedDigit()

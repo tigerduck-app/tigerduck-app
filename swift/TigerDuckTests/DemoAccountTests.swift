@@ -34,18 +34,24 @@ struct DemoAccountTests {
         func removeAllObjects() throws { try stored.removeAllObjects() }
     }
 
-    private static let studentId = "B11308964"
+    static let studentId = "B11308964"
     private static let schoolPassword = "its-my-duty"
     private static let libraryPassword = "its-my-duty"
 
-    private final class Calls {
+    final class Calls {
         var syncTurnedOff = 0
         var library: [String] = []
         var schoolSignIns = 0
+        var courseChanges: [Data] = []
+        var clubs: [ClubCard] = []
+        var clubActivities: [ClubActivity] = []
+        var subscribedClubs: [Int] = []
+        var droppedClubs: [Int] = []
+        var servicesSignedOut = 0
     }
 
     @MainActor
-    private final class Folder {
+    final class Folder {
         let root = FileManager.default.temporaryDirectory
             .appendingPathComponent("DemoAccountTests-\(UUID().uuidString)", isDirectory: true)
         lazy var cache = TestCache(folders: CacheFolders(root: root))
@@ -61,20 +67,30 @@ struct DemoAccountTests {
         }
     }
 
-    private static func demoSignIn() -> SignIn {
+    static func demoSignIn() -> SignIn {
         let signIns = SignInSeries()
         signIns.startDemo()
         return signIns.currentSignIn
     }
 
-    private static func account(_ folder: Folder, statuses: ServerStatusTracker = ServerStatusTracker(),
-                                calls: Calls = Calls()) -> DemoAccount {
+    static func account(_ folder: Folder, statuses: ServerStatusTracker = ServerStatusTracker(),
+                                calls: Calls = Calls(), courseChanges: ((Data) -> Void)? = nil) -> DemoAccount {
         let cache = folder.cache
         let stores = DemoStores(
             courses: cache.courses, colors: CourseColorStore(files: cache.colors), rounds: AssignmentRounds(),
             classmates: folder.classmates, statuses: statuses, demoSignedIn: folder.demoSignedIn,
             moodle: { MoodleCacheContext(account: $0, cache: cache.moodle, assignments: cache.assignments, signIn: $1) },
             keepBulletins: { BulletinFeed.keep($0, files: cache.bulletins, for: $1) },
+            keepCourseChanges: courseChanges ?? { calls.courseChanges.append($0) },
+            keepScores: { NTUSTScoreService.keep($0, studentId: $1, files: ScoreReportFiles(folders: cache.folders), for: $2) },
+            showClubs: { clubs, activities in
+                calls.clubs = clubs
+                calls.clubActivities = activities
+            },
+            dropClubs: { ids, _, _ in calls.droppedClubs += ids },
+            dropScores: { NTUSTScoreService.invalidateCache(studentId: $0, files: ScoreReportFiles(folders: cache.folders)) },
+            signOutServices: { calls.servicesSignedOut += 1 },
+            subscribeClub: { id, _ in calls.subscribedClubs.append(id) },
             turnOffSync: { _ in calls.syncTurnedOff += 1 },
             libraryIsKept: { false },
             signInLibrary: { username, _ in calls.library.append(username) }
@@ -87,8 +103,9 @@ struct DemoAccountTests {
         let url = try #require(Bundle.main.url(forResource: "demo", withExtension: "json"))
         let raw = try #require(try JSONSerialization.jsonObject(with: Data(contentsOf: url)) as? [String: Any])
         #expect(Set(raw.keys) == [
-            "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
-            "assignments", "bulletins", "calendar", "moodle", "emptyClassroom", "informationSystem",
+            "anchor", "studentId", "school-password", "library-password", "mail", "libraryQr", "courses", "classmates",
+            "assignments", "bulletins", "calendar", "courseChanges", "scores", "clubs", "moodle", "emptyClassroom",
+            "informationSystem",
         ])
 
         let fixture = try #require(DemoFixture.load(from: .main))
@@ -222,9 +239,48 @@ struct DemoAccountTests {
         #expect(bulletins.allSatisfy { cache.bulletins.loadBulletinDetail(id: $0.id)?.bodyMd?.isEmpty == false })
 
         #expect(folder.classmates.people.map(\.nickname) == ["Duckling"])
+        #expect(calls.subscribedClubs == [990001, 990002])
+        #expect(calls.clubs.count == 2)
         #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .ok })
         #expect(calls.library == [Self.studentId])
         #expect(calls.syncTurnedOff == 1)
+    }
+
+    @Test("in the demo, a refused refresh leaves every class-table source ok, with no note")
+    func aRefusedRefreshLeavesTheSourcesOk() async throws {
+        let folder = Folder()
+        let session = AccountSession(signIns: SignInSeries())
+        let statuses = ServerStatusTracker()
+        let demo = Self.account(folder, statuses: statuses)
+        let signIn = demo.startSignIn(in: session)
+        demo.write(try #require(demo.fixture), for: signIn)
+        let refusal = URLError(.notConnectedToInternet).localizedDescription
+
+        for server in ServerKind.classTableSources where server != .backend {
+            CourseFetch.record(.failed, for: server, note: refusal, round: signIn, tracker: statuses)
+        }
+        await withExclusiveRealDefaults {
+            statuses.noteBackendReachable(false)
+            statuses.noteSyncResult(false)
+        }
+
+        #expect(ServerKind.classTableSources.allSatisfy { statuses.status(for: $0) == .ok })
+        #expect(ServerKind.classTableSources.allSatisfy { statuses.note(for: $0) == nil })
+    }
+
+    @Test("the demo ended at launch leaves none of its server statuses behind")
+    func theEndedDemoLeavesNoStatus() throws {
+        let folder = Folder()
+        let launch = AccountSession(signIns: SignInSeries())
+        let statuses = ServerStatusTracker()
+        let demo = Self.account(folder, statuses: statuses)
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: launch))
+        #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .ok })
+
+        SecureStore.$sharedForTesting.withValue(LockablePhoneKeychain()) { demo.resume(in: launch) }
+
+        #expect(!launch.signIns.currentSignIn.isDemo)
+        #expect(ServerKind.allCases.allSatisfy { statuses.status(for: $0) == .unknown })
     }
 
     @Test("signing out ends the demo, and the sign-out's clearing takes the file's data and the kept key with it")
@@ -252,9 +308,10 @@ struct DemoAccountTests {
         #expect(folder.cache.bulletins.loadBulletinSummaries().isEmpty)
         #expect(folder.cache.moodle.loadMoodleCourseIdMap().isEmpty)
         #expect(folder.cache.moodle.loadEnrolledMoodleCourseIds().isEmpty)
+        #expect(ScoreReportFiles(folders: folder.cache.folders).loadScoreReport(studentId: Self.studentId) == nil)
     }
 
-    @Test("a launch behind the lock screen resumes the demo sign-in, and a classmate removed stays removed")
+    @Test("a launch behind the lock screen resumes the demo sign-in and its clubs, and a classmate removed stays removed")
     func aLockedLaunchResumesTheDemo() async throws {
         let folder = Folder()
         let calls = Calls()
@@ -282,8 +339,10 @@ struct DemoAccountTests {
         }
         let classmate = try #require(folder.classmates.people.first)
         folder.classmates.delete(classmate.id, for: auth.session.signIns.currentSignIn)
+        calls.clubs = []
         keychain.isLocked = true
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: locked) }
+        #expect(calls.clubs.count == 2)
         keychain.isLocked = false
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: unlocked) }
 
@@ -314,11 +373,14 @@ struct DemoAccountTests {
         #expect(folder.cache.courses.loadCourses(semester: CourseSelectionService.currentSemesterCode()).count == 5)
     }
 
-    @Test("the key kept without demo credentials ends the demo once the Keychain reads back")
-    func theKeyWithoutCredentialsEndsTheDemo() {
+    @Test("the key kept without demo credentials ends the demo and all it kept once the Keychain reads back")
+    func theKeyWithoutCredentialsEndsTheDemo() throws {
         let folder = Folder()
-        let demo = Self.account(folder)
-        demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+        let calls = Calls()
+        let demo = Self.account(folder, calls: calls)
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: AccountSession(signIns: SignInSeries())))
+        let scores = ScoreReportFiles(folders: folder.cache.folders)
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) != nil)
         let keychain = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
         let launch = AccountSession(signIns: SignInSeries())
 
@@ -330,6 +392,104 @@ struct DemoAccountTests {
         SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
         #expect(!launch.signIns.currentSignIn.isDemo)
         #expect(!Defaults[folder.demoSignedIn])
+        #expect(calls.courseChanges.last == Data())
+        #expect(calls.droppedClubs == [990001, 990002])
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) == nil)
+        #expect(calls.servicesSignedOut == 1)
+    }
+
+    @Test("the demo ended at launch drops its own clubs and keeps an account's subscription and unsent mark")
+    func theEndedDemoKeepsAnAccountsClubs() async throws {
+        try await withExclusiveRealDefaults {
+            let subscriptions = ClubSubscriptions.shared
+            subscriptions.forget()
+            defer { subscriptions.forget() }
+            let launch = AccountSession(signIns: SignInSeries())
+            for id in [93, 990001, 990002] { subscriptions.subscribe(id, for: launch.signIns.currentSignIn) }
+            let folder = Folder()
+            var demo = Self.account(folder)
+            demo.stores.dropClubs = DemoStores().dropClubs
+            demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+
+            SecureStore.$sharedForTesting.withValue(LockablePhoneKeychain()) { demo.resume(in: launch) }
+
+            #expect(!Defaults[folder.demoSignedIn])
+            #expect(subscriptions.subscribedIDs == [93])
+            let saved = try #require(Defaults[.clubSubscriptions])
+            #expect(ClubSubscriptionsDocument(json: saved).subscribedIDs == [93])
+            #expect(subscriptions.hasUnsentChanges)
+        }
+    }
+
+    @Test("the demo still ended behind the lock screen drops its own clubs' unsent mark once the Keychain reads back")
+    func theCurrentDemosEndDropsItsUnsentMark() async throws {
+        try await withExclusiveRealDefaults {
+            let subscriptions = ClubSubscriptions.shared
+            subscriptions.forget()
+            defer { subscriptions.forget() }
+            let folder = Folder()
+            var demo = Self.account(folder)
+            demo.stores.dropClubs = DemoStores().dropClubs
+            demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+            let keychain = LockablePhoneKeychain(absentReadsFailWhileLocked: true)
+            let launch = AccountSession(signIns: SignInSeries())
+            keychain.isLocked = true
+            SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+            for id in [990001, 990002] { subscriptions.subscribe(id, for: launch.signIns.currentSignIn) }
+            #expect(subscriptions.hasUnsentChanges)
+
+            keychain.isLocked = false
+            SecureStore.$sharedForTesting.withValue(keychain) { demo.resume(in: launch) }
+
+            #expect(!launch.signIns.currentSignIn.isDemo)
+            #expect(subscriptions.subscribedIDs.isEmpty)
+            #expect(!subscriptions.hasUnsentChanges)
+        }
+    }
+
+    @Test("each step of the demo's end runs while the demo is still marked, so a cut-short end is run again")
+    func theMarkOutlastsEveryStep() {
+        let folder = Folder()
+        let calls = Calls()
+        var demo = Self.account(folder, calls: calls)
+        var marked: [Bool] = []
+        demo.stores.keepCourseChanges = { _ in marked.append(Defaults[folder.demoSignedIn]) }
+        demo.stores.dropClubs = { _, _, _ in marked.append(Defaults[folder.demoSignedIn]) }
+        demo.stores.dropScores = { _ in marked.append(Defaults[folder.demoSignedIn]) }
+        demo.stores.signOutServices = { marked.append(Defaults[folder.demoSignedIn]) }
+        demo.startSignIn(in: AccountSession(signIns: SignInSeries()))
+
+        demo.leave(for: testSignIn, afterCurrentDemo: false)
+
+        #expect(marked == [true, true, true, true])
+        #expect(!Defaults[folder.demoSignedIn])
+    }
+
+    @Test("a demo end cut short after the clubs is finished at the next launch, and a second end changes nothing")
+    func aCutShortEndIsFinishedAtTheNextLaunch() throws {
+        let folder = Folder()
+        let calls = Calls()
+        let demo = Self.account(folder, calls: calls)
+        demo.write(try #require(demo.fixture), for: demo.startSignIn(in: AccountSession(signIns: SignInSeries())))
+        demo.stores.keepCourseChanges(Data())
+        demo.stores.dropClubs([990001, 990002], true, testSignIn)
+        let scores = ScoreReportFiles(folders: folder.cache.folders)
+        let keychain = LockablePhoneKeychain()
+        let launch = AccountSession(signIns: SignInSeries())
+
+        SecureStore.$sharedForTesting.withValue(keychain) {
+            KeychainManager.saveString(key: AppConstants.KeychainKeys.studentId, value: "B11399001")
+            KeychainManager.saveString(key: AppConstants.KeychainKeys.password, value: "an-account")
+            demo.resume(in: launch)
+        }
+        #expect(!Defaults[folder.demoSignedIn])
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) == nil)
+        #expect(calls.servicesSignedOut == 1)
+
+        demo.leave(for: launch.signIns.currentSignIn, afterCurrentDemo: false)
+        #expect(!Defaults[folder.demoSignedIn])
+        #expect(NTUSTScoreService.cachedScoreReport(studentId: Self.studentId, files: scores) == nil)
+        #expect(calls.droppedClubs == [990001, 990002, 990001, 990002, 990001, 990002])
     }
 
     @Test("the demo timetable is there in either course language, each in its own")
@@ -352,9 +512,11 @@ struct DemoAccountTests {
     @Test("signing out of the demo signs out the library it signed in, and the next launch is no demo")
     func signingOutOfTheDemoSignsOutItsLibrary() async {
         let folder = Folder()
+        var demo = Self.account(folder)
+        demo.stores.signOutServices = DemoStores().signOutServices
         let auth = AuthService(
             session: AccountSession(signIns: SignInSeries()), keychainHasCredentials: { false },
-            notificationCenter: NotificationCenter(), endSchoolSession: { _ in }, demo: Self.account(folder)
+            notificationCenter: NotificationCenter(), endSchoolSession: { _ in }, demo: demo
         )
         #if os(iOS)
         auth.accountNotifications = DeliveredNotificationsStub()
@@ -425,7 +587,7 @@ struct DemoAccountTests {
         let thread = try #require(try await api.discussions(forums[1].id, 0).first)
         #expect(try await !api.posts(thread.id).isEmpty)
         #expect(try await api.materials(90501).sections.count == 3)
-        #expect(try await api.members(90501).members.count == 7)
+        #expect(try await api.members(90501).members.count == 20)
         #expect(try await api.gradeItems(90501).count == 5)
         #expect(try await api.summary(90501).names.isEmpty == false)
 

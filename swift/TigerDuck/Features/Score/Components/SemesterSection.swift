@@ -2,12 +2,11 @@ import SwiftUI
 import TigerDuckCore
 
 struct SemesterSection: View {
-    @Environment(AppEnvironment.self) private var app
-
     let term: String
     let courses: [CourseGrade]
     let gpaPoint: GPATrendPoint?
     let isCollapsed: Bool
+    let policy: VisualStylePolicy
     let onToggle: () -> Void
     let onCourseTap: (CourseGrade) -> Void
 
@@ -29,7 +28,7 @@ struct SemesterSection: View {
                 }
             }
         }
-        .presetCard(policy: app.preferences.visualStylePolicy)
+        .presetCard(policy: policy)
         .padding(.horizontal, TigerDuckTheme.Spacing.lg)
     }
 

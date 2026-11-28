@@ -1,4 +1,5 @@
 import Foundation
+import TigerDuckCore
 
 nonisolated enum LanguageManager {
     static let system = "system"
@@ -53,6 +54,10 @@ nonisolated enum LanguageManager {
               let first = name.first
         else { return tag }
         return String(first).capitalized(with: locale) + name.dropFirst()
+    }
+
+    static func language(of appLanguage: String) -> AppLanguage {
+        AppLanguage(tag: appLanguage == system ? nil : appLanguage)
     }
 
     static func apply(_ appLanguage: String) {

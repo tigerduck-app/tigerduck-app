@@ -103,6 +103,8 @@ final class MailMessageViewModel: Identifiable {
 
     var formattedHTML: String? { showsLightPage ? pages?.light : pages?.app }
 
+    var formattedOnLightPage: Bool { mode == .formatted && formattedHTML != nil && showsLightPage }
+
     private var showsLightPage: Bool { appearsLight || viewsInLightMode }
 
     var deleteIsPermanent: Bool {
@@ -213,6 +215,10 @@ final class MailMessageViewModel: Identifiable {
 
     func prepareAttachment(_ part: MailBodyPart) async -> URL? {
         await MailMessageActions.prepareAttachment(part, model: self)
+    }
+
+    func prepareImage(_ source: String) async -> URL? {
+        await MailMessageActions.prepareImage(source, model: self)
     }
 
     func isRisky(_ part: MailBodyPart) -> Bool {

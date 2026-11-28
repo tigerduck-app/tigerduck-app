@@ -30,7 +30,7 @@ extension IMAPConnection {
     }
 
     func authenticatePlainBody(username: String, password: String) async throws {
-        let mechanism = AuthenticationMechanism("PLAIN")
+        let mechanism = AuthenticationMechanism.plain
         let plainCapability = Capability.authenticate(mechanism)
 
         guard capabilities.contains(plainCapability) else {
@@ -208,7 +208,7 @@ extension IMAPConnection {
     }
 
     func authenticateXOAUTH2Body(email: String, accessToken: String) async throws {
-        let mechanism = AuthenticationMechanism("XOAUTH2")
+        let mechanism = AuthenticationMechanism("XOAUTH2")!
         let xoauthCapability = Capability.authenticate(mechanism)
 
         guard capabilities.contains(xoauthCapability) else {

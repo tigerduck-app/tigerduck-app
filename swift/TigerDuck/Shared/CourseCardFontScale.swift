@@ -21,7 +21,6 @@ nonisolated enum CourseCardFontScale {
 }
 
 nonisolated final class CourseCardFontScaleStore {
-    static let appGroupIdentifier = "group.org.ntust.app.TigerDuck"
     static let storageKey = "courseCardFontScaleV2"
     static let legacyStorageKey = "courseCardFontScale"
 
@@ -37,8 +36,8 @@ nonisolated final class CourseCardFontScaleStore {
         ) != nil
     }
 
-    init(appGroupIdentifier: String = CourseCardFontScaleStore.appGroupIdentifier) {
-        let requiresSharedContainer = appGroupIdentifier == Self.appGroupIdentifier
+    init(appGroupIdentifier: String = AppUserDefaults.appGroupIdentifier) {
+        let requiresSharedContainer = appGroupIdentifier == AppUserDefaults.appGroupIdentifier
         if !requiresSharedContainer || Self.isAppGroupAvailable(appGroupIdentifier),
            let suite = AppUserDefaults.suite(appGroupIdentifier) {
             self.defaults = suite

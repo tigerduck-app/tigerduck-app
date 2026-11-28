@@ -89,17 +89,52 @@ enum MailWebViewFactory {
         if let list { controller.add(list) }
     }
 
-    static func document(for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app) -> String {
+    /// The element the text size scales. The sanitizer keeps no `id` of the sender's.
+    static let zoomedElementID = "mail"
+
+    /// The mail's first line sits at the page's top: the elements that open it, each the first child
+    /// of the one before, inside wrappers such as a `div` or `table`, drop their top margin, even an
+    /// inline one.
+    static let firstLineAtTop =
+        "#\(zoomedElementID) :first-child:not(#\(zoomedElementID) :not(:first-child) *){margin-top:0!important;}"
+
+    /// CSS `zoom` reflows the text to the page's width, where `WKWebView.pageZoom` on iOS only
+    /// magnifies it past the edge, as `BrowserPageScripts.zoom` notes.
+    static func document(
+        for bodyHTML: String, allowRemoteImages: Bool, theme: MailHTMLTheme = .app, textZoom: Int = PageZoom.standard
+    ) -> String {
         let imageSources = allowRemoteImages ? "tdcid: data: https: http:" : "tdcid: data:"
         let scheme = theme.isDark ? "dark" : "light"
+        let inset = Int(MailMessageView.sideInset)
+        let page = theme.isDark
+            ? "padding:0 \(inset)px;"
+            : "padding:\(inset)px;box-shadow:inset 0 12px 12px -12px rgba(0,0,0,.5),inset 0 -12px 12px -12px rgba(0,0,0,.5);"
         return """
         <!DOCTYPE html><html><head><meta charset="utf-8">
         <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src \(imageSources); style-src 'unsafe-inline'">
-        <meta name="viewport" content="width=device-width, initial-scale=1">
-        <style>:root{color-scheme:\(scheme);}html,body{margin:0;padding:12px;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}img{max-width:100%;height:auto;}table{max-width:100%;}</style>
-        </head><body>\(bodyHTML)</body></html>
+        <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+        <style>:root{color-scheme:\(scheme);}html,body{margin:0;background:\(theme.backgroundCSS);color:\(theme.foregroundCSS);font:-apple-system-body;overflow-wrap:anywhere;}body{\(page)}img{max-width:100%;height:auto;}table{max-width:100%;}\(firstLineAtTop)</style>
+        </head><body><div id="\(zoomedElementID)" style="zoom:\(textZoom)%">\(bodyHTML)</div></body></html>
         """
     }
+
+    /// Run in the app's own content world, which `allowsContentJavaScript` does not turn off. The
+    /// scroll view's content and the root's `scrollHeight` never shrink below the web view's
+    /// frame, so the height is the root's box, or the body's scroll height when text overflows a
+    /// fixed-height box the sender styled.
+    static let zoomAndMeasure = """
+        const zoomed = document.getElementById("\(zoomedElementID)");
+        if (zoomed) zoomed.style.zoom = zoom + "%";
+        return Math.max(document.documentElement.getBoundingClientRect().height, document.body.scrollHeight);
+        """
+
+    /// The address of the image at page point (`x`, `y`), unless a link holds it: a tap there is
+    /// the link's.
+    static let imageAtPoint = """
+        const image = document.elementFromPoint(x - scrollX, y - scrollY);
+        if (!image || image.tagName !== "IMG" || image.closest("a[href]")) return null;
+        return image.currentSrc || image.src || null;
+        """
 }
 
 final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {
@@ -114,9 +149,7 @@ final class MailCIDSchemeHandler: NSObject, WKURLSchemeHandler {
             task.didFailWithError(URLError(.badURL))
             return
         }
-        let raw = String(url.absoluteString.dropFirst("\(MailHTMLSanitizer.cidScheme):".count))
-        let cid = raw.removingPercentEncoding ?? raw
-        guard let image = images[cid] else {
+        guard let cid = MailHTMLSanitizer.contentID(ofCIDAddress: url.absoluteString), let image = images[cid] else {
             task.didFailWithError(URLError(.fileDoesNotExist))
             return
         }

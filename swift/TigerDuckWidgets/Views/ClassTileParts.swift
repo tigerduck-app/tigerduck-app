@@ -124,12 +124,14 @@ struct WidgetDayHeader: View {
     let dateFont: Font
     let palette: WidgetPalette
 
+    @Environment(\.appLanguage) private var language
+
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(title ?? Self.weekdayTitle(of: day))
+            Text(title ?? weekdayTitle)
                 .font(titleFont)
                 .foregroundStyle(palette.onSurface)
-            Text(day.formatted(Self.dateStyle))
+            Text(day.formatted(dateStyle))
                 .font(dateFont)
                 .foregroundStyle(palette.onSurfaceVariant)
         }
@@ -138,10 +140,8 @@ struct WidgetDayHeader: View {
         .accessibilityAddTraits(.isHeader)
     }
 
-    static func weekdayTitle(of day: Date) -> String {
-        String.localizedStringWithFormat(
-            String(localized: "widget_today_weekday_title"), String(localized: weekdayKey(ClassTimeline.weekday(of: day)))
-        )
+    private var weekdayTitle: String {
+        language.format("widget_today_weekday_title", language.string(Self.weekdayKey(ClassTimeline.weekday(of: day))))
     }
 
     static func weekdayKey(_ weekday: Int) -> LocalizedStringResource {
@@ -157,9 +157,10 @@ struct WidgetDayHeader: View {
     }
 
     /// Widgets take the app's language, which can differ from the region the date would follow.
-    private static var dateStyle: Date.FormatStyle {
+    private var dateStyle: Date.FormatStyle {
         Date.FormatStyle(
-            locale: Locale(identifier: Bundle.main.preferredLocalizations.first ?? "en"), timeZone: TaipeiTime.timeZone
+            locale: Locale(identifier: language.tag ?? Bundle.main.preferredLocalizations.first ?? "en"),
+            timeZone: TaipeiTime.timeZone
         )
         .month(.abbreviated)
         .day()

@@ -191,7 +191,7 @@ struct PipelinedCommandDispatcherTests {
 
     /// Build a tagged `<tag> OK completed` response.
     private func taggedOK(_ tag: String) -> Response {
-        .tagged(TaggedResponse(tag: tag, state: .ok(ResponseText(text: "completed"))))
+        .tagged(TaggedResponse(tag: Command.Tag(generated: tag), state: .ok(ResponseText(text: "completed"))))
     }
 
     /// Drive the dispatcher through an `EmbeddedChannel` (single-threaded, synchronous)

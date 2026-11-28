@@ -114,9 +114,8 @@ nonisolated enum AppClock {
     #if os(watchOS)
     private static func defaultsStore() -> UserDefaults { .standard }
     #else
-    static let appGroupSuiteName = "group.org.ntust.app.TigerDuck"
     private static func defaultsStore() -> UserDefaults {
-        AppUserDefaults.suite(appGroupSuiteName) ?? .standard
+        AppUserDefaults.suite(AppUserDefaults.appGroupIdentifier) ?? .standard
     }
     #endif
 

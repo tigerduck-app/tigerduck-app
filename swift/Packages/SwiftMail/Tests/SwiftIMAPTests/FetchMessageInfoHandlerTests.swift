@@ -227,6 +227,21 @@ struct FetchMessageInfoHandlerTests {
         #expect(infos[0].references == [MessageID("<root@example.com>")!, MessageID("<child@example.com>")!])
     }
 
+    @Test
+    func testEnvelopeGroupsListTheirMembers() async throws {
+        let team = #"((NIL NIL "Team" NIL)(NIL NIL "a" "example.com")(NIL NIL "b" "example.com")(NIL NIL NIL NIL))"#
+        let undisclosed = #"((NIL NIL "undisclosed-recipients" NIL)(NIL NIL NIL NIL))"#
+        let envelope = #"(NIL NIL NIL NIL NIL \#(team) \#(undisclosed) NIL NIL "<group@example.com>")"#
+
+        let infos = try await executeFetch([
+            fetchResponse(sequenceNumber: 1, envelope: envelope, headerBlock: "\r\n"),
+            "A001 OK FETCH completed\r\n"
+        ])
+
+        #expect(infos.first?.to == ["Team: a@example.com, b@example.com"])
+        #expect(infos.first?.cc == ["undisclosed-recipients: "])
+    }
+
     /// Build a `Date` from explicit Y/M/D + H/M/S components, anchored to UTC.
     /// Folded into a single `DateComponents` parameter so the helper signature
     /// stays under the 6-parameter swiftlint limit while keeping call sites

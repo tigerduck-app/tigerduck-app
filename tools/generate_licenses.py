@@ -59,6 +59,24 @@ APP_LICENSE_NAME = "GNU Affero General Public License v3.0"
 # Resolved, but nothing from them ends up in the app.
 BUILD_ONLY = {
     "swift-syntax": "only Defaults' macros use it, and macros run inside the compiler",
+    # swift-nio-extras and everything it resolves. swift-nio-ssl names swift-certificates too,
+    # but only for its tests, which never brought it into the graph on their own.
+    **dict.fromkeys(
+        [
+            "swift-algorithms",
+            "swift-asn1",
+            "swift-async-algorithms",
+            "swift-certificates",
+            "swift-crypto",
+            "swift-http-structured-headers",
+            "swift-http-types",
+            "swift-nio-extras",
+            "swift-nio-http2",
+            "swift-numerics",
+            "swift-service-lifecycle",
+        ],
+        "only swift-nio-imap's IMAPCommands product uses it, which the app does not link",
+    ),
 }
 
 # Ships inside the app bundle, but is not a Swift package, so

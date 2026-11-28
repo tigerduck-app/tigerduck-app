@@ -1,4 +1,5 @@
 #if os(iOS)
+import Defaults
 import SwiftUI
 import UIKit
 
@@ -105,6 +106,11 @@ struct MailMessageContentView: View {
     @Binding var webHeight: CGFloat
     @Binding var webLoaded: Bool
     @Binding var pendingLinkTarget: MailLinkTarget?
+    let onImageTap: (String) -> Void
+    @Default(.mailTextZoom) private var storedZoom
+    @ScaledMetric(relativeTo: .body) private var bodySize: CGFloat = 17
+
+    private var textZoom: Int { PageZoom.mail.clamped(storedZoom) }
 
     var body: some View {
         if viewModel.detail == nil {
@@ -126,14 +132,16 @@ struct MailMessageContentView: View {
                         inlineImages: viewModel.detail?.inlineImages ?? [:],
                         allowRemoteImages: viewModel.allowRemoteImages,
                         theme: viewModel.htmlTheme,
+                        textZoom: textZoom,
                         contentHeight: $webHeight,
                         onLinkTap: { index in
                             if let target = viewModel.linkTarget(forIndex: index) { pendingLinkTarget = target }
                         },
-                        onLoadedChange: { webLoaded = $0 }
+                        onLoadedChange: { webLoaded = $0 },
+                        onImageTap: onImageTap
                     )
                     .frame(height: webHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: TigerDuckTheme.CornerRadius.md))
+                    .padding(.horizontal, -MailMessageView.sideInset)
                     if !webLoaded {
                         ProgressView().frame(maxWidth: .infinity).padding(.vertical, 60)
                     }
@@ -152,7 +160,7 @@ struct MailMessageContentView: View {
     private var source: some View {
         if let source = viewModel.source {
             VStack(alignment: .leading, spacing: TigerDuckTheme.Spacing.sm) {
-                Button(String(localized: "school_mail_copy_all")) { Pasteboard.copy(source) }
+                CopyButton(text: source, toast: "school_mail_source_copied") { Text(String(localized: "school_mail_copy_all")) }
                     .font(.caption.weight(.semibold))
                 MailSourceTextView(text: source)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -171,7 +179,7 @@ struct MailMessageContentView: View {
 
     private var plainBody: some View {
         Text(viewModel.linkedPlainText)
-            .font(TigerDuckTheme.Typography.body)
+            .font(.system(size: bodySize * CGFloat(textZoom) / 100))
             .foregroundStyle(Color.textPrimary)
             .textSelection(.enabled)
     }
