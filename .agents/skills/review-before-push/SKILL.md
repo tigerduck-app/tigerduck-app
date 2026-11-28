@@ -76,6 +76,8 @@ After every `await` that precedes a write, check `signIn.isCurrent` again before
   `check_*.py` scripts on the branch, and fix what they report. A `LocalizedStringResource`
   property named like an argument label (`title`, `label`) makes `check_keys.py` read every
   literal passed with that label as a key; name it `titleKey`.
+- Run the `check_*.py` scripts after `git add`: `check_macos_sources.py` reads tracked files only,
+  so it passes while a new Swift file is still untracked.
 
 ## 6. Security
 
