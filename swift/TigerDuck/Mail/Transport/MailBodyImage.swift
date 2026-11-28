@@ -37,7 +37,7 @@ nonisolated struct MailBodyImage: Equatable, Sendable {
             guard let image = detail.inlineImages?[cid], previewableType(image.mimeType) != nil else { return nil }
             return confirmed(image.data, name: detail.parts.first { $0.contentID == cid }?.filename)
         }
-        if let data = MailHTMLSanitizer.dataImageBytes(source) {
+        if let data = MailDataImage.bytes(source) {
             return confirmed(data, name: nil)
         }
         guard allowRemoteImages, let url = URL(string: source), ["https", "http"].contains(url.scheme?.lowercased()),
